@@ -36,6 +36,19 @@ export interface Position {
   entryIndex: number;
 }
 
+export type FillKind = "market" | "stop" | "take";
+
+export interface Fill {
+  orderId: string;
+  side: OrderSide;
+  quantity: number;
+  price: number;
+  index: number;
+  timestamp: Timestamp;
+  fee: number;
+  kind: FillKind;
+}
+
 export interface MarketEngine {
   reset(startIndex: number): void;
   step(): MarketEvent;

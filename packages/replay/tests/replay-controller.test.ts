@@ -40,14 +40,40 @@ describe("ReplayController", () => {
 
   it("supports controlled playback speed", () => {
     vi.useFakeTimers();
-    const engine = new CandleMarketEngine(candles);
-    const replay = new ReplayController(engine);
-    replay.reset(0);
-    replay.setSpeed(10);
-    replay.play();
-    vi.advanceTimersByTime(100);
-    replay.pause();
-    expect(engine.getState().index).toBe(2);
-    vi.useRealTimers();
+    try {
+      const engine = new CandleMarketEngine(candles);
+      const replay = new ReplayController(engine);
+      replay.reset(0);
+      replay.setSpeed(10);
+      replay.play();
+      vi.advanceTimersByTime(100);
+      replay.pause();
+      // reset() leaves index at 0; 10x = 100ms per step, so 100ms advances once.
+      expect(engine.getState().index).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("notifies playing changes including auto-pause at end", () => {
+    vi.useFakeTimers();
+    try {
+      const engine = new CandleMarketEngine(candles);
+      const replay = new ReplayController(engine);
+      const playingStates: boolean[] = [];
+      const unsubscribe = replay.subscribePlaying(v => playingStates.push(v));
+      replay.reset(0);
+      expect(replay.playing).toBe(false);
+      replay.play();
+      expect(replay.playing).toBe(true);
+      replay.setSpeed(10);
+      vi.advanceTimersByTime(200);
+      expect(engine.getState().index).toBe(2);
+      expect(replay.playing).toBe(false);
+      expect(playingStates).toEqual([true, false]);
+      unsubscribe();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

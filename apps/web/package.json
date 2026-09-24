@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@trading-research/engine": "0.1.0",
+    "@trading-research/execution": "0.1.0",
+    "@trading-research/portfolio": "0.1.0",
     "@trading-research/replay": "0.1.0",
     "@trading-research/shared": "0.1.0",
     "lightweight-charts": "^5.0.0",
