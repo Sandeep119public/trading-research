@@ -1,0 +1,27 @@
+# Coding Agent Instructions
+
+Read ARCHITECTURE.md before touching code and re-check it before any module-boundary change.
+
+## Priorities
+1. Accurate, delightful market replay.
+2. Accurate backtesting using the same engine as replay.
+3. Clean chart UX.
+4. Mobile-responsive PWA.
+5. Small architecture over feature count.
+
+## Hard rules
+- Replay and backtest MUST share the same MarketEngine and ExecutionEngine.
+- Never expose future data beyond the engine's current time.
+- UI sends trading intents; it never mutates trading state.
+- Never invent execution behavior. Follow ARCHITECTURE.md, including signal/fill timing and conservative SL-first candle ambiguity.
+- One module owns each mutable concern.
+- New top-level packages/services require an ARCHITECTURE.md update in the same change.
+- Do not add a dependency when small local code is sufficient.
+- Do not build deferred features before V1 is solid.
+- Prefer deleting obsolete code over layering patches.
+
+## Working style
+Build vertical slices in architecture order. Before changing a boundary, identify the owning module and fix the interface there. After non-trivial changes, run tests and build before reporting completion.
+
+## Testing
+Engine, execution, and portfolio logic require unit tests. Replay/backtest must be deterministic across repeated runs. UI tests can lag behind engine tests during V1.
