@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@trading-research/data": "0.1.0",
     "@trading-research/engine": "0.1.0",
     "@trading-research/execution": "0.1.0",
     "@trading-research/portfolio": "0.1.0",

@@ -1,51 +1,89 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { createChart, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi } from "lightweight-charts";
+import { BinanceDataManager } from "@trading-research/data";
 import { CandleMarketEngine } from "@trading-research/engine";
 import { ExecutionEngine } from "@trading-research/execution";
 import { Portfolio, type PortfolioState } from "@trading-research/portfolio";
 import { ReplayController, type ReplaySpeed } from "@trading-research/replay";
-import type { Candle, MarketState } from "@trading-research/shared";
+import type { MarketState } from "@trading-research/shared";
+import { BTCUSDT_5M_KLINES } from "./btcusdt-5m-sample";
 import "./styles.css";
 
-const candles: Candle[] = Array.from({ length: 240 }, (_, i) => {
-  const base = 100 + Math.sin(i / 13) * 4 + i * 0.025;
-  const open = base + Math.sin(i * 1.7) * 0.7;
-  const close = base + Math.cos(i * 1.3) * 0.8;
-  const high = Math.max(open, close) + 0.6 + (i % 7) * 0.08;
-  const low = Math.min(open, close) - 0.6 - (i % 5) * 0.07;
-  return { timestamp: 1700000000 + i * 300, open, high, low, close, volume: 100 + (i % 23) * 8 };
+const RANGE = {
+  startTime: BTCUSDT_5M_KLINES[0][0],
+  endTime: BTCUSDT_5M_KLINES[BTCUSDT_5M_KLINES.length - 1][0]
+};
+
+// Static snapshot transport: same DataManager code path as live data, but the
+// browser performs zero exchange calls. Live fetching arrives with the Data
+// Service; the replay machinery underneath stays identical.
+async function fetchStaticKlines({ startTime, endTime }: { startTime: number; endTime: number }) {
+  return BTCUSDT_5M_KLINES.filter(r => r[0] >= startTime && r[0] <= endTime);
+}
+
+const dataManager = new BinanceDataManager({
+  symbol: "BTCUSDT",
+  timeframe: "5m",
+  fetchKlines: fetchStaticKlines
 });
 
-const engine = new CandleMarketEngine(candles);
-const replay = new ReplayController(engine);
-const execution = new ExecutionEngine({ feePerUnit: 0, slippagePerUnit: 0 });
-const portfolio = new Portfolio(10000);
-replay.reset(0);
-const initialState = engine.getState();
-const initialPortfolio = portfolio.getState();
-portfolio.markToMarket(initialState.candle.close);
+interface Stack {
+  engine: CandleMarketEngine;
+  replay: ReplayController;
+  execution: ExecutionEngine;
+  portfolio: Portfolio;
+}
+
+function rangeLabel(): string {
+  const fmt = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+  return `${fmt(RANGE.startTime)} → ${fmt(RANGE.endTime)}`;
+}
 
 function App() {
   const chartRef = React.useRef<HTMLDivElement>(null);
   const chartApi = React.useRef<IChartApi | null>(null);
   const candleSeries = React.useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeries = React.useRef<ISeriesApi<"Histogram"> | null>(null);
-  const [playing, setPlaying] = React.useState(replay.playing);
+  const [stack, setStack] = React.useState<Stack | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [playing, setPlaying] = React.useState(false);
   const [speed, setSpeed] = React.useState<ReplaySpeed>(1);
-  const [state, setState] = React.useState<MarketState>(initialState);
-  const [portfolioState, setPortfolioState] = React.useState<PortfolioState>(() => portfolio.getState());
+  const [state, setState] = React.useState<MarketState | null>(null);
+  const [portfolioState, setPortfolioState] = React.useState<PortfolioState | null>(null);
   const orderSeq = React.useRef(1);
 
-  const handleMarket = React.useCallback((s: MarketState) => {
-    setState(s);
-    for (const fill of execution.process(s)) portfolio.applyFill(fill);
-    portfolio.markToMarket(s.candle.close);
-    setPortfolioState(portfolio.getState());
+  React.useEffect(() => {
+    let cancelled = false;
+    let replay: ReplayController | null = null;
+    dataManager
+      .loadRange(RANGE)
+      .then(candles => {
+        if (cancelled) return;
+        const engine = new CandleMarketEngine(candles);
+        replay = new ReplayController(engine);
+        const execution = new ExecutionEngine({ feePerUnit: 0, slippagePerUnit: 0 });
+        const portfolio = new Portfolio(10000);
+        replay.subscribe((s: MarketState) => {
+          setState(s);
+          for (const fill of execution.process(s)) portfolio.applyFill(fill);
+          portfolio.markToMarket(s.candle.close);
+          setPortfolioState(portfolio.getState());
+        });
+        replay.subscribePlaying(setPlaying);
+        replay.reset(0);
+        portfolio.markToMarket(engine.getState().candle.close);
+        setPortfolioState(portfolio.getState());
+        setStack({ engine, replay, execution, portfolio });
+      })
+      .catch(err => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+      replay?.pause();
+    };
   }, []);
-
-  React.useEffect(() => replay.subscribe(handleMarket), [handleMarket]);
-  React.useEffect(() => replay.subscribePlaying(setPlaying), []);
 
   React.useEffect(() => {
     if (!chartRef.current) return;
@@ -71,14 +109,24 @@ function App() {
   React.useEffect(() => {
     const series = candleSeries.current;
     const volume = volumeSeries.current;
-    if (!series || !volume) return;
+    if (!series || !volume || !state) return;
     series.setData(state.visibleCandles.map(c => ({ time: c.timestamp as any, open: c.open, high: c.high, low: c.low, close: c.close })));
     volume.setData(state.visibleCandles.map(c => ({ time: c.timestamp as any, value: c.volume })));
   }, [state]);
 
   React.useEffect(() => {
-    replay.setSpeed(speed);
-  }, [speed]);
+    stack?.replay.setSpeed(speed);
+  }, [speed, stack]);
+
+  if (error) {
+    return <div className="app"><header><div><strong>Trading Research</strong></div></header><main><p>Data failed to load: {error}</p></main></div>;
+  }
+
+  if (!stack || !state || !portfolioState) {
+    return <div className="app"><header><div><strong>Trading Research</strong></div></header><main><p>Loading BTCUSDT 5m…</p></main></div>;
+  }
+
+  const { engine, replay, execution, portfolio } = stack;
 
   const reset = () => {
     execution.reset();
@@ -94,8 +142,7 @@ function App() {
   };
 
   const submitIntent = (side: "buy" | "sell") => {
-    const position = portfolioState.position;
-    if (position !== null) return;
+    if (portfolioState.position !== null) return;
     const id = `manual-${orderSeq.current++}`;
     execution.submit({ id, side, quantity: 1, fillMode: "close" }, engine.getState().index);
     const current = engine.getState();
@@ -124,7 +171,7 @@ function App() {
   return <div className="app">
     <header>
       <div><strong>Trading Research</strong><span className="badge">REPLAY</span></div>
-      <div className="symbol">SYNTH / 5m</div>
+      <div className="symbol">BTCUSDT / 5m · {rangeLabel()}</div>
     </header>
     <main><section className="chart-shell"><div ref={chartRef} className="chart" /></section></main>
     <footer>

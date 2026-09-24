@@ -205,17 +205,24 @@ export class BinanceDataManager {
   }
 
   private isRangeCached(range: DataRange): boolean {
-    const intervalMs = TIMEFRAME_MS[this.timeframe];
-    for (let open = range.startTime; open <= range.endTime; open += intervalMs) {
-      if (!this.cache.has(Math.floor(open / 1000))) return false;
-    }
-    return true;
+    return this.expectedSeconds(range).every(ts => this.cache.has(ts));
   }
 
   private sliceRange(range: DataRange): Candle[] {
-    return this.getCachedCandles().filter(
-      c => c.timestamp * 1000 >= range.startTime && c.timestamp * 1000 <= range.endTime
-    );
+    // Compare in the truncated-seconds domain: raw openTime ms values lose
+    // their sub-second part on normalization, so re-deriving membership from
+    // ms bounds would wrongly drop boundary candles.
+    const wanted = new Set(this.expectedSeconds(range));
+    return this.getCachedCandles().filter(c => wanted.has(c.timestamp));
+  }
+
+  private expectedSeconds(range: DataRange): number[] {
+    const intervalMs = TIMEFRAME_MS[this.timeframe];
+    const out: number[] = [];
+    for (let open = range.startTime; open <= range.endTime; open += intervalMs) {
+      out.push(Math.floor(open / 1000));
+    }
+    return out;
   }
 }
 
