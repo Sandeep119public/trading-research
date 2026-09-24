@@ -36,7 +36,7 @@ function kline(
   ];
 }
 
-const T0 = 1_700_000_000_000;
+const T0 = 1_700_000_040_000;
 const rows = [
   kline(T0, 100, 101, 99, 100.5),
   kline(T0 + MIN, 100.5, 102, 100, 101.5),
