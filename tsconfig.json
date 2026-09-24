@@ -1,1 +1,3 @@
-{"files":[],"references":[{"path":"./packages/shared"},{"path":"./packages/engine"},{"path":"./packages/replay"},{"path":"./apps/web"}]}
+{
+  "files": []
+}
