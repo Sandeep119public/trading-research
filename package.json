@@ -1,6 +1,14 @@
 {
-  "name":"trading-research",
-  "private":true,
-  "workspaces":["apps/*","packages/*"],
-  "scripts":{"dev":"npm --workspace @trading-research/web run dev","build":"npm run build --workspaces","test":"npm run test --workspaces","typecheck":"npm run typecheck --workspaces"}
+  "name": "trading-research",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm --workspace @trading-research/web run dev",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
 }
