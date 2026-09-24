@@ -120,6 +120,28 @@ describe("BinanceDataManager", () => {
     expect(manager.getCachedCandles()).toHaveLength(0);
   });
 
+
+  it("does not silently truncate when pagination reaches the page limit", async () => {
+    const fetch = vi.fn(async ({ startTime }: { startTime: number }) => [
+      kline(startTime, 100, 101, 99, 100)
+    ]);
+    const manager = new BinanceDataManager({ symbol: "BTCUSDT", timeframe: "1m", fetchKlines: fetch as never });
+    await expect(
+      manager.loadRange({ startTime: T0, endTime: T0 + 500 * MIN }, 1)
+    ).rejects.toThrow(/page/i);
+    expect(fetch).toHaveBeenCalledTimes(500);
+  });
+
+  it("returns timeframe-aligned candles inside an unaligned requested range", async () => {
+    const fetch = vi.fn(async () => rows);
+    const manager = new BinanceDataManager({ symbol: "BTCUSDT", timeframe: "1m", fetchKlines: fetch as never });
+    const candles = await manager.loadRange({
+      startTime: T0 + 30_000,
+      endTime: T0 + 90_000
+    });
+    expect(candles.map(c => c.timestamp)).toEqual([(T0 + MIN) / 1000]);
+  });
+
   it("feeds validated candles into MarketEngine with the future-data rule intact", async () => {
     const fetch = vi.fn(async () => rows);
     const manager = new BinanceDataManager({ symbol: "BTCUSDT", timeframe: "1m", fetchKlines: fetch as never });
