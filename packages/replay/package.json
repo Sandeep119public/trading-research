@@ -1,1 +1,19 @@
-{"name":"@trading-research/replay","version":"0.1.0","private":true,"type":"module","exports":{".":"./src/index.ts"},"scripts":{"typecheck":"tsc --noEmit"},"dependencies":{"@trading-research/shared":"0.1.0"},"devDependencies":{"typescript":"^5.9.0"}}
+{
+  "name": "@trading-research/replay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@trading-research/shared": "0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "@trading-research/engine": "0.1.0"
+  }
+}
