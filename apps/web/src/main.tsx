@@ -1,14 +1,18 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { createChart, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi } from "lightweight-charts";
+import { createChart, CandlestickSeries, HistogramSeries, type ISeriesApi } from "lightweight-charts";
 import { BinanceDataManager } from "@trading-research/data";
 import { CandleMarketEngine } from "@trading-research/engine";
 import { ExecutionEngine } from "@trading-research/execution";
 import { Portfolio, type PortfolioState } from "@trading-research/portfolio";
 import { ReplayController, type ReplaySpeed } from "@trading-research/replay";
 import type { MarketState } from "@trading-research/shared";
-import { BTCUSDT_5M_KLINES } from "./btcusdt-5m-sample";
+import { BTCUSDT_5M_KLINES, BTCUSDT_5M_META } from "./btcusdt-5m-sample";
+import { toChartPoints } from "./chart-points";
+import { syncFromMarket } from "./replay-sync";
 import "./styles.css";
+
+const STARTING_CAPITAL = 10000;
 
 const RANGE = {
   startTime: BTCUSDT_5M_KLINES[0][0],
@@ -23,8 +27,8 @@ async function fetchStaticKlines({ startTime, endTime }: { startTime: number; en
 }
 
 const dataManager = new BinanceDataManager({
-  symbol: "BTCUSDT",
-  timeframe: "5m",
+  symbol: BTCUSDT_5M_META.symbol,
+  timeframe: BTCUSDT_5M_META.timeframe,
   fetchKlines: fetchStaticKlines
 });
 
@@ -42,7 +46,6 @@ function rangeLabel(): string {
 
 function App() {
   const chartRef = React.useRef<HTMLDivElement>(null);
-  const chartApi = React.useRef<IChartApi | null>(null);
   const candleSeries = React.useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeries = React.useRef<ISeriesApi<"Histogram"> | null>(null);
   const [stack, setStack] = React.useState<Stack | null>(null);
@@ -62,11 +65,10 @@ function App() {
         const engine = new CandleMarketEngine(candles);
         replay = new ReplayController(engine);
         const execution = new ExecutionEngine({ feePerUnit: 0, slippagePerUnit: 0 });
-        const portfolio = new Portfolio(10000);
+        const portfolio = new Portfolio(STARTING_CAPITAL);
         replay.subscribe((s: MarketState) => {
           setState(s);
-          for (const fill of execution.process(s)) portfolio.applyFill(fill);
-          portfolio.markToMarket(s.candle.close);
+          syncFromMarket(execution, portfolio, s);
           setPortfolioState(portfolio.getState());
         });
         replay.subscribePlaying(setPlaying);
@@ -85,7 +87,7 @@ function App() {
   }, []);
 
   React.useEffect(() => {
-    if (!chartRef.current) return;
+    if (!stack || !chartRef.current) return;
     const chart = createChart(chartRef.current, {
       layout: { background: { color: "#09090b" }, textColor: "#a1a1aa" },
       grid: { vertLines: { color: "#18181b" }, horzLines: { color: "#18181b" } },
@@ -95,22 +97,22 @@ function App() {
     const series = chart.addSeries(CandlestickSeries, {});
     const volume = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "" });
     volume.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-    chartApi.current = chart;
     candleSeries.current = series;
     volumeSeries.current = volume;
     const resize = () => chart.applyOptions({ width: chartRef.current?.clientWidth ?? 0, height: chartRef.current?.clientHeight ?? 0 });
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(chartRef.current);
-    return () => { observer.disconnect(); chart.remove(); chartApi.current = null; };
-  }, []);
+    return () => { observer.disconnect(); chart.remove(); };
+  }, [stack]);
 
   React.useEffect(() => {
     const series = candleSeries.current;
     const volume = volumeSeries.current;
     if (!series || !volume || !state) return;
-    series.setData(state.visibleCandles.map(c => ({ time: c.timestamp as any, open: c.open, high: c.high, low: c.low, close: c.close })));
-    volume.setData(state.visibleCandles.map(c => ({ time: c.timestamp as any, value: c.volume })));
+    const points = toChartPoints(state.visibleCandles);
+    series.setData(points.candles);
+    volume.setData(points.volumes);
   }, [state]);
 
   React.useEffect(() => {
@@ -122,14 +124,14 @@ function App() {
   }
 
   if (!stack || !state || !portfolioState) {
-    return <div className="app"><header><div><strong>Trading Research</strong></div></header><main><p>Loading BTCUSDT 5m…</p></main></div>;
+    return <div className="app"><header><div><strong>Trading Research</strong></div></header><main><p>Loading {BTCUSDT_5M_META.symbol} {BTCUSDT_5M_META.timeframe}…</p></main></div>;
   }
 
   const { engine, replay, execution, portfolio } = stack;
 
   const reset = () => {
     execution.reset();
-    portfolio.reset(10000);
+    portfolio.reset(STARTING_CAPITAL);
     replay.reset(0);
     setState(engine.getState());
     setPortfolioState(portfolio.getState());
@@ -144,9 +146,7 @@ function App() {
     if (portfolioState.position !== null) return;
     const id = execution.nextOrderId("manual");
     execution.submit({ id, side, quantity: 1, fillMode: "close" }, engine.getState().index);
-    const current = engine.getState();
-    for (const fill of execution.process(current)) portfolio.applyFill(fill);
-    portfolio.markToMarket(current.candle.close);
+    syncFromMarket(execution, portfolio, engine.getState());
     setPortfolioState(portfolio.getState());
   };
 
@@ -158,9 +158,7 @@ function App() {
       { id, side: position.side === "long" ? "sell" : "buy", quantity: position.quantity, fillMode: "close", reduceOnly: true },
       engine.getState().index
     );
-    const current = engine.getState();
-    for (const fill of execution.process(current)) portfolio.applyFill(fill);
-    portfolio.markToMarket(current.candle.close);
+    syncFromMarket(execution, portfolio, engine.getState());
     setPortfolioState(portfolio.getState());
   };
 
@@ -170,7 +168,7 @@ function App() {
   return <div className="app">
     <header>
       <div><strong>Trading Research</strong><span className="badge">REPLAY</span></div>
-      <div className="symbol">BTCUSDT / 5m · {rangeLabel()}</div>
+      <div className="symbol">{BTCUSDT_5M_META.symbol} / {BTCUSDT_5M_META.timeframe} · {rangeLabel()}</div>
     </header>
     <main><section className="chart-shell"><div ref={chartRef} className="chart" /></section></main>
     <footer>
