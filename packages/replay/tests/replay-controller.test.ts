@@ -12,16 +12,17 @@ describe("ReplayController", () => {
   it("emits only states produced by MarketEngine.step", () => {
     const engine = new CandleMarketEngine(candles);
     const replay = new ReplayController(engine);
-    replay.reset(0);
     const seen: number[] = [];
     replay.subscribe(state => seen.push(state.candle.timestamp));
+    replay.reset(0);
     replay.step();
-    expect(seen).toEqual([2]);
+    expect(seen).toEqual([1, 2]);
   });
 
   it("is deterministic after reset", () => {
     const engine = new CandleMarketEngine(candles);
     const replay = new ReplayController(engine);
+
     const first: number[] = [];
     replay.subscribe(state => first.push(state.candle.timestamp));
     replay.reset(0);
@@ -34,7 +35,7 @@ describe("ReplayController", () => {
     replay.step();
     replay.step();
 
-    expect(second).toEqual([1, 2, 3]);
+    expect(second).toEqual(first);
   });
 
   it("supports controlled playback speed", () => {
@@ -49,5 +50,4 @@ describe("ReplayController", () => {
     expect(engine.getState().index).toBe(2);
     vi.useRealTimers();
   });
-}
-);
+});
