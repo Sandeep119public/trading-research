@@ -31,6 +31,7 @@ At replay time T, no component may expose data with timestamp > T. Loading a ful
 ```
 apps/web/
 packages/
+  backtest/
   chart/
   data/
   engine/
