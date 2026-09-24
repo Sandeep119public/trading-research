@@ -19,7 +19,7 @@ Replay calls `step()` on a timer, user-controlled (play/pause/step/speed). Backt
 | Orders | ExecutionEngine |
 | Positions, P&L | Portfolio |
 | Chart rendering | Chart (UI) |
-| UI-only state | Zustand |
+| UI-only state | React state/hooks (Zustand only if app-wide state later requires it) |
 | Fetching/caching raw data | Data Service (Worker) |
 
 If two modules can both mutate the same trading state, that is a design bug. The UI never updates a position directly; it sends intents to ExecutionEngine.
@@ -53,17 +53,22 @@ interface MarketEngine {
 }
 
 interface Strategy {
-  onBar(context: StrategyContext): Signal[]
+  onBar(state: MarketState): StrategySignal[]
 }
 
 interface ExecutionEngine {
-  submit(order: Order): void
+  nextOrderId(prefix: string): string
+  submit(order: OrderIntent, currentIndex: number): void
   process(market: MarketState): Fill[]
 }
 ```
 
 ## Data service contract
 The server does exactly one thing: give historical market data. It fetches from Binance, caches to Parquet, and serves over HTTP. It contains no trading logic, authentication, or portfolio state.
+
+## V1 strategy constraint
+- A strategy may return at most one signal per bar.
+- BacktestDriver rejects multiple signals before submitting any of them.
 
 ## Execution model
 - V1 is candle mode only.
@@ -83,7 +88,7 @@ Backtest: same engine auto-driven, strategy, entry/exit, SL/TP, fees, slippage, 
 Multi-timeframe alignment, walk-forward/optimization, live trading, ML strategies, tick data, multi-asset portfolios, social/marketplace features, and native mobile app. PWA only.
 
 ## Determinism
-Identical symbol/date-range/strategy inputs must produce identical trades, equity, and metrics unless seeded randomness is explicitly enabled.
+Identical symbol/date-range/strategy inputs must produce identical trades, fill IDs, equity, and metrics unless seeded randomness is explicitly enabled. ExecutionEngine owns deterministic order-ID allocation and resets that allocator with its other mutable state.
 
 ## Build order
 1. Synthetic OHLCV fixture → MarketEngine → Replay → Chart, no network.
