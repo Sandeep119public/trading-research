@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CandleMarketEngine } from "@trading-research/engine";
 import type { Candle, MarketState } from "@trading-research/shared";
 import { BacktestDriver, type Strategy } from "../src/index";
 
