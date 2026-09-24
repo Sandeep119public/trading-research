@@ -12,7 +12,7 @@ import {
 } from "../src/index";
 
 const MIN = 60_000;
-const T0 = 1_700_000_000_000;
+const T0 = 1_700_000_040_000;
 
 function kline(
   openTime: number,
