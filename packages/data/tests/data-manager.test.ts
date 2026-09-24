@@ -53,6 +53,16 @@ describe("binance adapter", () => {
     ]);
   });
 
+  it("freezes normalized candles so cached data cannot be corrupted", () => {
+    const [first] = normalizeBinanceKlines(rows);
+    try {
+      first.close = 999999;
+    } catch {
+      // Frozen candle: the mutation is rejected instead of corrupting state.
+    }
+    expect(first.close).toBe(100.5);
+  });
+
   it("rejects non-increasing timestamps", () => {
     expect(() => normalizeBinanceKlines([rows[1], rows[0]])).toThrow(/strictly increasing/);
   });
@@ -113,6 +123,17 @@ describe("BinanceDataManager", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it("clear empties the cache so the next load refetches", async () => {
+    const fetch = vi.fn(async () => rows);
+    const manager = new BinanceDataManager({ symbol: "BTCUSDT", timeframe: "1m", fetchKlines: fetch as never });
+    await manager.loadRange({ startTime: T0, endTime: T0 + 2 * MIN });
+    expect(manager.getCachedCandles()).toHaveLength(3);
+    manager.clear();
+    expect(manager.getCachedCandles()).toHaveLength(0);
+    await manager.loadRange({ startTime: T0, endTime: T0 + 2 * MIN });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("never lets malformed data reach the simulation", async () => {
     const fetch = vi.fn(async () => [[T0, "100"] as unknown as BinanceKline]);
     const manager = new BinanceDataManager({ symbol: "BTCUSDT", timeframe: "1m", fetchKlines: fetch as never });
@@ -140,6 +161,13 @@ describe("BinanceDataManager", () => {
       endTime: T0 + 90_000
     });
     expect(candles.map(c => c.timestamp)).toEqual([(T0 + MIN) / 1000]);
+  });
+
+  it("fails loudly when fetched pages leave a hole in a historical range", async () => {
+    const gapped = [rows[0], rows[2]];
+    const fetch = vi.fn(async () => gapped);
+    const manager = new BinanceDataManager({ symbol: "BTCUSDT", timeframe: "1m", fetchKlines: fetch as never });
+    await expect(manager.loadRange({ startTime: T0, endTime: T0 + 2 * MIN })).rejects.toThrow(/cover/i);
   });
 
   it("feeds validated candles into MarketEngine with the future-data rule intact", async () => {

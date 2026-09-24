@@ -32,4 +32,17 @@ describe("CandleMarketEngine", () => {
     const second = [engine.step(), engine.step(), engine.step()];
     expect(second).toEqual(first);
   });
+
+  it("does not let consumers mutate the stored dataset", () => {
+    const engine = new CandleMarketEngine(candles);
+    engine.reset(0);
+    const state = engine.step().state;
+    try {
+      state.candle.close = 999999;
+    } catch {
+      // Frozen dataset: the mutation is rejected instead of corrupting state.
+    }
+    engine.reset(0);
+    expect(engine.step().state.candle.close).toBe(101);
+  });
 });

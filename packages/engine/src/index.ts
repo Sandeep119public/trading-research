@@ -11,7 +11,9 @@ export class CandleMarketEngine implements MarketEngine {
         throw new Error("Candles must have strictly increasing timestamps");
       }
     }
-    this.candles = candles;
+    // Defensive copy plus freeze: consumers receive live references through
+    // getState(), so the stored dataset must be immune to outside mutation.
+    this.candles = candles.map(c => Object.freeze({ ...c }) as Candle);
   }
 
   reset(startIndex: number): void {

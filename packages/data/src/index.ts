@@ -97,7 +97,9 @@ export function normalizeBinanceKlines(klines: readonly BinanceKline[]): Candle[
       throw new Error(`Invalid kline at position ${i}: timestamps must be strictly increasing`);
     }
     prevTimestamp = timestamp;
-    candles.push({ timestamp, open: o, high: h, low: l, close: c, volume: v });
+    // Freeze: normalized candles are cached and handed to the simulation, so
+    // no consumer may be able to mutate history through a live reference.
+    candles.push(Object.freeze({ timestamp, open: o, high: h, low: l, close: c, volume: v }) as Candle);
   }
   return candles;
 }
@@ -213,6 +215,15 @@ export class BinanceDataManager {
     const selected = selectKlinesInRange(dropLiveFormingCandle(raw, range.endTime), range);
     for (const candle of normalizeBinanceKlines(selected)) {
       this.cache.set(candle.timestamp, candle);
+    }
+    // A historical range is fully closed as of now, so any grid candle still
+    // missing means the fetched pages left a hole. Fail loudly instead of
+    // handing the simulation a silently incomplete dataset. Live-edge ranges
+    // are exempt: the forming candle is legitimately absent there.
+    if (range.endTime < Date.now() && !this.isRangeCached(range)) {
+      throw new Error(
+        `Historical range ${range.startTime}..${range.endTime} is not fully covered: fetched klines leave a hole`
+      );
     }
     return this.sliceRange(range);
   }

@@ -25,7 +25,7 @@ Replay calls `step()` on a timer, user-controlled (play/pause/step/speed). Backt
 If two modules can both mutate the same trading state, that is a design bug. The UI never updates a position directly; it sends intents to ExecutionEngine.
 
 ## The Future Data Rule
-At replay time T, no component may expose data with timestamp > T. Loading a full dataset and merely rendering the first N candles is a violation if an indicator or strategy can read the future array. The engine must make this structurally hard.
+At replay time T, no component may expose data with timestamp > T. Loading a full dataset and merely rendering the first N candles is a violation if an indicator or strategy can read the future array. The engine must make this structurally hard. Dataset candles are frozen at the engine/data boundary, so no consumer holding a state reference can mutate history either.
 
 ## Repo layout
 ```

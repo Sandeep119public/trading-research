@@ -76,4 +76,23 @@ describe("ReplayController", () => {
       vi.useRealTimers();
     }
   });
+
+  it("reset while playing stops the timer and leaves replay paused", () => {
+    vi.useFakeTimers();
+    try {
+      const engine = new CandleMarketEngine(candles);
+      const replay = new ReplayController(engine);
+      replay.reset(0);
+      replay.play();
+      expect(replay.playing).toBe(true);
+      replay.reset(0);
+      expect(replay.playing).toBe(false);
+      expect(engine.getState().index).toBe(0);
+      vi.advanceTimersByTime(5000);
+      expect(engine.getState().index).toBe(0);
+      expect(replay.playing).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

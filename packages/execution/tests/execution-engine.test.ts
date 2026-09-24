@@ -95,6 +95,21 @@ describe("ExecutionEngine", () => {
     expect(engine.nextOrderId("manual")).toBe("manual-1");
   });
 
+  it("reset clears pending orders, open risk, and used ids", () => {
+    const engine = new ExecutionEngine({ feePerUnit: 0, slippagePerUnit: 0 });
+    engine.submit({ id: "a", side: "buy", quantity: 1, fillMode: "close" }, 0);
+    expect(engine.pendingCount()).toBe(1);
+    engine.reset();
+    expect(engine.pendingCount()).toBe(0);
+    expect(engine.hasOpenRisk()).toBe(false);
+    engine.submit({ id: "a", side: "buy", quantity: 1, fillMode: "close" }, 0);
+    expect(engine.process(state(0, 100, 101, 99, 100))).toHaveLength(1);
+    expect(engine.hasOpenRisk()).toBe(true);
+    engine.reset();
+    expect(engine.pendingCount()).toBe(0);
+    expect(engine.hasOpenRisk()).toBe(false);
+  });
+
   it("is deterministic after reset", () => {
     const run = () => {
       const engine = new ExecutionEngine({ feePerUnit: 0.1, slippagePerUnit: 0.2 });
