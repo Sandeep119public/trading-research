@@ -179,6 +179,7 @@ export class BinanceDataManager {
     const raw: BinanceKline[] = [];
     let cursor = range.startTime;
     let prevCursor = -Infinity;
+    let paginationComplete = false;
     for (let page = 0; page < MAX_PAGES; page++) {
       if (!(cursor > prevCursor)) throw new Error("Kline pagination stalled: cursor did not advance");
       prevCursor = cursor;
@@ -189,13 +190,25 @@ export class BinanceDataManager {
         endTime: range.endTime,
         limit
       });
-      if (rows.length === 0) break;
+      if (rows.length === 0) {
+        paginationComplete = true;
+        break;
+      }
       raw.push(...rows);
-      if (rows.length < limit) break;
+      if (rows.length < limit) {
+        paginationComplete = true;
+        break;
+      }
       const lastOpen = rows[rows.length - 1][0];
       if (!Number.isFinite(lastOpen)) throw new Error("Malformed kline page: last openTime is not a number");
       cursor = lastOpen + intervalMs;
-      if (cursor > range.endTime) break;
+      if (cursor > range.endTime) {
+        paginationComplete = true;
+        break;
+      }
+    }
+    if (!paginationComplete) {
+      throw new Error("Kline pagination exceeded " + MAX_PAGES + " pages before the requested range was fully covered");
     }
     const selected = selectKlinesInRange(dropLiveFormingCandle(raw, range.endTime), range);
     for (const candle of normalizeBinanceKlines(selected)) {
@@ -219,7 +232,9 @@ export class BinanceDataManager {
   private expectedSeconds(range: DataRange): number[] {
     const intervalMs = TIMEFRAME_MS[this.timeframe];
     const out: number[] = [];
-    for (let open = range.startTime; open <= range.endTime; open += intervalMs) {
+    let open = Math.floor(range.startTime / intervalMs) * intervalMs;
+    if (open < range.startTime) open += intervalMs;
+    for (; open <= range.endTime; open += intervalMs) {
       out.push(Math.floor(open / 1000));
     }
     return out;

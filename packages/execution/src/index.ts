@@ -41,6 +41,7 @@ export class ExecutionEngine {
   private readonly config: ExecutionConfig;
   private pending: PendingOrder | null = null;
   private risk: OpenRisk | null = null;
+  private orderSeq = 1;
   private readonly usedIds = new Set<string>();
 
   constructor(config: ExecutionConfig) {
@@ -52,7 +53,13 @@ export class ExecutionEngine {
   reset(): void {
     this.pending = null;
     this.risk = null;
+    this.orderSeq = 1;
     this.usedIds.clear();
+  }
+
+  nextOrderId(prefix: string): string {
+    if (!prefix) throw new Error("order id prefix is required");
+    return prefix + "-" + this.orderSeq++;
   }
 
   submit(order: OrderIntent, currentIndex: number): void {

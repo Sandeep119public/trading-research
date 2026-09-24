@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CandleMarketEngine } from "@trading-research/engine";
 import type { Candle, MarketState } from "@trading-research/shared";
 import { BacktestDriver, type Strategy } from "../src/index";
 
@@ -86,6 +87,17 @@ describe("BacktestDriver", () => {
     expect(second).toEqual(first);
   });
 
+  it("resets the owned market engine directly", () => {
+    const driver = new BacktestDriver(
+      [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)],
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+    );
+    driver.run(buyOnce);
+    driver.reset();
+    const engine = (driver as unknown as { engine: CandleMarketEngine }).engine;
+    expect(engine.finished()).toBe(false);
+  });
+
   it("resets and reruns to identical trades and equity", () => {
     const driver = new BacktestDriver(
       [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)],
@@ -96,6 +108,20 @@ describe("BacktestDriver", () => {
     const second = driver.run(buyOnce);
     expect(second.fills).toEqual(first.fills);
     expect(second.finalEquity).toBe(first.finalEquity);
+  });
+
+  it("rejects multiple strategy signals per bar in V1", () => {
+    const driver = new BacktestDriver(
+      [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)],
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+    );
+    expect(() => driver.run({
+      onBar(state) {
+        return state.index === 0
+          ? [{ side: "buy", quantity: 1 }, { side: "sell", quantity: 1 }]
+          : [];
+      }
+    })).toThrow(/at most one signal per bar/);
   });
 
   it("never exposes candle N+1 while processing N", () => {

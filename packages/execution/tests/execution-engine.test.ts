@@ -87,6 +87,14 @@ describe("ExecutionEngine", () => {
     expect(priceyFill.fee).toBeGreaterThan(cheapFill.fee);
   });
 
+  it("owns and resets deterministic order-id allocation", () => {
+    const engine = new ExecutionEngine({ feePerUnit: 0, slippagePerUnit: 0 });
+    expect(engine.nextOrderId("manual")).toBe("manual-1");
+    expect(engine.nextOrderId("manual")).toBe("manual-2");
+    engine.reset();
+    expect(engine.nextOrderId("manual")).toBe("manual-1");
+  });
+
   it("is deterministic after reset", () => {
     const run = () => {
       const engine = new ExecutionEngine({ feePerUnit: 0.1, slippagePerUnit: 0.2 });
