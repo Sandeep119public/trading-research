@@ -2,7 +2,8 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { createChart, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi } from "lightweight-charts";
 import { CandleMarketEngine } from "@trading-research/engine";
-import type { Candle } from "@trading-research/shared";
+import { ReplayController, type ReplaySpeed } from "@trading-research/replay";
+import type { Candle, MarketState } from "@trading-research/shared";
 import "./styles.css";
 
 const candles: Candle[] = Array.from({ length: 240 }, (_, i) => {
@@ -15,8 +16,9 @@ const candles: Candle[] = Array.from({ length: 240 }, (_, i) => {
 });
 
 const engine = new CandleMarketEngine(candles);
-engine.reset(0);
-const initialState = engine.step().state;
+const replay = new ReplayController(engine);
+replay.reset(0);
+const initialState = engine.getState();
 
 function App() {
   const chartRef = React.useRef<HTMLDivElement>(null);
@@ -24,8 +26,10 @@ function App() {
   const candleSeries = React.useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeries = React.useRef<ISeriesApi<"Histogram"> | null>(null);
   const [playing, setPlaying] = React.useState(false);
-  const [speed, setSpeed] = React.useState<1 | 2 | 5 | 10>(1);
-  const [state, setState] = React.useState(initialState);
+  const [speed, setSpeed] = React.useState<ReplaySpeed>(1);
+  const [state, setState] = React.useState<MarketState>(initialState);
+
+  React.useEffect(() => replay.subscribe(setState), []);
 
   React.useEffect(() => {
     if (!chartRef.current) return;
@@ -57,25 +61,18 @@ function App() {
   }, [state]);
 
   React.useEffect(() => {
-    if (!playing) return;
-    const timer = window.setInterval(() => {
-      if (engine.finished()) {
-        setPlaying(false);
-        return;
-      }
-      setState(engine.step().state);
-    }, 1000 / speed);
-    return () => window.clearInterval(timer);
-  }, [playing, speed]);
+    if (playing) replay.play();
+    else replay.pause();
+  }, [playing]);
 
-  const step = () => {
-    if (!engine.finished()) setState(engine.step().state);
-  };
+  React.useEffect(() => {
+    replay.setSpeed(speed);
+  }, [speed]);
 
   const reset = () => {
-    engine.reset(0);
+    replay.reset(0);
     setPlaying(false);
-    setState(engine.step().state);
+    setState(engine.getState());
   };
 
   return <div className="app">
@@ -87,7 +84,7 @@ function App() {
     <footer>
       <button onClick={reset}>↺ Reset</button>
       <button onClick={() => setPlaying(v => !v)}>{playing ? "Pause" : "Play"}</button>
-      <button onClick={step}>Step</button>
+      <button onClick={() => replay.step()}>Step</button>
       <div className="speeds">{([1, 2, 5, 10] as const).map(s => <button className={speed === s ? "active" : ""} key={s} onClick={() => setSpeed(s)}>{s}x</button>)}</div>
       <div className="time">{new Date(state.candle.timestamp * 1000).toISOString().slice(0, 16).replace("T", " ")}</div>
     </footer>
