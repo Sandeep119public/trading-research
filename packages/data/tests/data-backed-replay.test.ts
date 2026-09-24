@@ -98,11 +98,11 @@ describe("data-backed replay", () => {
   });
 
   it("excludes the forming candle at the live edge", async () => {
-    const now = Date.now();
+    const now = Math.floor(Date.now() / MIN) * MIN;
     const live = [
       kline(now - 2 * MIN, 100, 101, 99, 100),
       kline(now - MIN, 100, 101, 99, 100),
-      kline(now, 100, 101, 99, 100, 10, now + MIN)
+      kline(now, 100, 101, 99, 100, 10, now + MIN - 1)
     ];
     const stack = await loadStack(live, now - 2 * MIN, now + MIN);
     expect(stack.candles).toHaveLength(2);
