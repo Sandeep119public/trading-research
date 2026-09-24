@@ -95,8 +95,12 @@ function App() {
       timeScale: { borderColor: "#27272a", timeVisible: true }
     });
     const series = chart.addSeries(CandlestickSeries, {});
-    const volume = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "" });
-    volume.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+    // Volume gets its own pane: overlay scaleMargins are not honored for
+    // overlay series in lightweight-charts v5, which left full-height volume
+    // bars hiding the candles. A stretched pane confines volume structurally.
+    const volumePane = chart.addPane();
+    volumePane.setStretchFactor(0.18);
+    const volume = volumePane.addSeries(HistogramSeries, { priceFormat: { type: "volume" } });
     candleSeries.current = series;
     volumeSeries.current = volume;
     const resize = () => chart.applyOptions({ width: chartRef.current?.clientWidth ?? 0, height: chartRef.current?.clientHeight ?? 0 });
