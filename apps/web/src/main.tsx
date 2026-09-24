@@ -51,7 +51,6 @@ function App() {
   const [speed, setSpeed] = React.useState<ReplaySpeed>(1);
   const [state, setState] = React.useState<MarketState | null>(null);
   const [portfolioState, setPortfolioState] = React.useState<PortfolioState | null>(null);
-  const orderSeq = React.useRef(1);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -143,7 +142,7 @@ function App() {
 
   const submitIntent = (side: "buy" | "sell") => {
     if (portfolioState.position !== null) return;
-    const id = `manual-${orderSeq.current++}`;
+    const id = execution.nextOrderId("manual");
     execution.submit({ id, side, quantity: 1, fillMode: "close" }, engine.getState().index);
     const current = engine.getState();
     for (const fill of execution.process(current)) portfolio.applyFill(fill);
@@ -154,7 +153,7 @@ function App() {
   const closePosition = () => {
     const position = portfolioState.position;
     if (position === null) return;
-    const id = `manual-${orderSeq.current++}`;
+    const id = execution.nextOrderId("manual");
     execution.submit(
       { id, side: position.side === "long" ? "sell" : "buy", quantity: position.quantity, fillMode: "close", reduceOnly: true },
       engine.getState().index
