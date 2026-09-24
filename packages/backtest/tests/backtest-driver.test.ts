@@ -110,6 +110,67 @@ describe("BacktestDriver", () => {
     expect(second.finalEquity).toBe(first.finalEquity);
   });
 
+  it("honors a middle startIndex", () => {
+    const driver = new BacktestDriver(
+      [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 105.5), candle(2, 106, 107, 105, 106)],
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+    );
+    const result = driver.run(
+      {
+        onBar(state) {
+          return state.index === 1 ? [{ side: "buy", quantity: 1 }] : [];
+        }
+      },
+      1
+    );
+    expect(result.fills).toHaveLength(1);
+    expect(result.fills[0].index).toBe(2);
+    expect(result.fills[0].price).toBeCloseTo(106);
+    expect(result.equityCurve).toHaveLength(2);
+  });
+
+  it("handles a last-candle start without failing", () => {
+    const driver = new BacktestDriver(
+      [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)],
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+    );
+    const result = driver.run(buyOnce, 1);
+    expect(result.fills).toHaveLength(0);
+    expect(result.equityCurve).toHaveLength(1);
+    expect(result.finalEquity).toBe(1000);
+  });
+
+  it("leaves a final-bar signal unfilled and out of the results", () => {
+    const driver = new BacktestDriver(
+      [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)],
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+    );
+    const result = driver.run({
+      onBar(state) {
+        return state.index === 1 ? [{ side: "buy", quantity: 1 }] : [];
+      }
+    });
+    expect(result.fills).toHaveLength(0);
+    expect(result.finalEquity).toBe(1000);
+  });
+
+  it("recovers cleanly after a throwing strategy", () => {
+    const candles = [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)];
+    const config = { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 };
+    const driver = new BacktestDriver(candles, config);
+    expect(() =>
+      driver.run({
+        onBar(state) {
+          if (state.index === 0) return [{ side: "buy", quantity: 1 }];
+          throw new Error("strategy blew up");
+        }
+      })
+    ).toThrow("strategy blew up");
+    const after = driver.run(buyOnce);
+    const fresh = new BacktestDriver(candles, config).run(buyOnce);
+    expect(after).toEqual(fresh);
+  });
+
   it("rejects multiple strategy signals per bar in V1", () => {
     const driver = new BacktestDriver(
       [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)],
@@ -122,6 +183,17 @@ describe("BacktestDriver", () => {
           : [];
       }
     })).toThrow(/at most one signal per bar/);
+  });
+
+  it("runs a single-candle dataset without failing", () => {
+    const driver = new BacktestDriver(
+      [candle(0, 100, 101, 99, 100)],
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+    );
+    const result = driver.run(buyOnce);
+    expect(result.equityCurve).toHaveLength(1);
+    expect(result.fills).toHaveLength(0);
+    expect(result.finalEquity).toBe(1000);
   });
 
   it("never exposes candle N+1 while processing N", () => {

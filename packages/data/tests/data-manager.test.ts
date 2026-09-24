@@ -123,6 +123,21 @@ describe("BinanceDataManager", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects mutation of cached candles and isolates returned arrays", async () => {
+    const fetch = vi.fn(async () => rows);
+    const manager = new BinanceDataManager({ symbol: "BTCUSDT", timeframe: "1m", fetchKlines: fetch as never });
+    await manager.loadRange({ startTime: T0, endTime: T0 + 2 * MIN });
+    try {
+      manager.getCachedCandles()[0].close = 999999;
+    } catch {
+      // Frozen cache: the mutation is rejected instead of corrupting state.
+    }
+    manager.getCachedCandles().push({ timestamp: -1, open: 1, high: 1, low: 1, close: 1, volume: 1 });
+    const cached = manager.getCachedCandles();
+    expect(cached).toHaveLength(3);
+    expect(cached[0].close).toBe(100.5);
+  });
+
   it("clear empties the cache so the next load refetches", async () => {
     const fetch = vi.fn(async () => rows);
     const manager = new BinanceDataManager({ symbol: "BTCUSDT", timeframe: "1m", fetchKlines: fetch as never });
@@ -168,6 +183,24 @@ describe("BinanceDataManager", () => {
     const fetch = vi.fn(async () => gapped);
     const manager = new BinanceDataManager({ symbol: "BTCUSDT", timeframe: "1m", fetchKlines: fetch as never });
     await expect(manager.loadRange({ startTime: T0, endTime: T0 + 2 * MIN })).rejects.toThrow(/cover/i);
+  });
+
+  it("loads a one-candle historical range", async () => {
+    const fetch = vi.fn(async () => rows);
+    const manager = new BinanceDataManager({ symbol: "BTCUSDT", timeframe: "1m", fetchKlines: fetch as never });
+    const candles = await manager.loadRange({ startTime: T0, endTime: T0 });
+    expect(candles).toHaveLength(1);
+    expect(candles[0].timestamp).toBe(T0 / 1000);
+  });
+
+  it("leaves no partial state when the transport fails mid-pagination", async () => {
+    const fetch = vi.fn(async ({ startTime }: { startTime: number }) => {
+      if (startTime > T0) throw new Error("network blew up");
+      return [rows[0]];
+    });
+    const manager = new BinanceDataManager({ symbol: "BTCUSDT", timeframe: "1m", fetchKlines: fetch as never });
+    await expect(manager.loadRange({ startTime: T0, endTime: T0 + 2 * MIN }, 1)).rejects.toThrow("network blew up");
+    expect(manager.getCachedCandles()).toHaveLength(0);
   });
 
   it("feeds validated candles into MarketEngine with the future-data rule intact", async () => {

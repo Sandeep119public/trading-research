@@ -74,6 +74,21 @@ describe("ExecutionEngine", () => {
     expect(tpTouch).toHaveLength(0);
   });
 
+  it("resolves exact boundaries against the trader on the short side", () => {
+    const slEngine = new ExecutionEngine({ feePerUnit: 0, slippagePerUnit: 0 });
+    slEngine.submit({ id: "sl", side: "sell", quantity: 1, fillMode: "close", stopLoss: 110, takeProfit: 90 }, 0);
+    slEngine.process(state(0, 100, 101, 99, 100));
+    const slTouch = slEngine.process(state(1, 100, 110, 89, 100));
+    expect(slTouch).toHaveLength(1);
+    expect(slTouch[0].kind).toBe("stop");
+
+    const tpEngine = new ExecutionEngine({ feePerUnit: 0, slippagePerUnit: 0 });
+    tpEngine.submit({ id: "tp", side: "sell", quantity: 1, fillMode: "close", stopLoss: 110, takeProfit: 90 }, 0);
+    tpEngine.process(state(0, 100, 101, 99, 100));
+    const tpTouch = tpEngine.process(state(1, 100, 109, 90, 100));
+    expect(tpTouch).toHaveLength(0);
+  });
+
   it("applies fees and slippage from configuration", () => {
     const cheap = new ExecutionEngine({ feePerUnit: 0, slippagePerUnit: 0 });
     cheap.submit({ id: "x", side: "buy", quantity: 1, fillMode: "close" }, 0);
@@ -121,5 +136,45 @@ describe("ExecutionEngine", () => {
     const first = run();
     const second = run();
     expect(second).toEqual(first);
+  });
+
+  it("rejects a second pending order and keeps the first intact", () => {
+    const engine = new ExecutionEngine({ feePerUnit: 0, slippagePerUnit: 0 });
+    engine.submit({ id: "a", side: "buy", quantity: 1, fillMode: "close" }, 0);
+    expect(() => engine.submit({ id: "b", side: "buy", quantity: 1, fillMode: "close" }, 0)).toThrow(/single pending/);
+    expect(engine.pendingCount()).toBe(1);
+    expect(engine.process(state(0, 100, 101, 99, 100))).toHaveLength(1);
+  });
+
+  it("rejects pyramiding, misplaced stops, and bad quantities", () => {
+    const engine = new ExecutionEngine({ feePerUnit: 0, slippagePerUnit: 0 });
+    engine.submit({ id: "a", side: "buy", quantity: 1, fillMode: "close" }, 0);
+    engine.process(state(0, 100, 101, 99, 100));
+    expect(() => engine.submit({ id: "b", side: "buy", quantity: 1, fillMode: "close" }, 1)).toThrow(/pyramiding/);
+    expect(() =>
+      engine.submit({ id: "c", side: "sell", quantity: 1, fillMode: "close", stopLoss: 90 }, 1)
+    ).toThrow(/Closing orders/);
+    expect(() =>
+      engine.submit({ id: "d", side: "sell", quantity: 2, fillMode: "close", reduceOnly: true }, 1)
+    ).toThrow(/exceeds open risk/);
+    expect(() => engine.submit({ id: "e", side: "sell", quantity: 0, fillMode: "close" }, 1)).toThrow(/quantity/);
+    expect(engine.hasOpenRisk()).toBe(true);
+  });
+
+  it("rejects reduceOnly closes with no open position", () => {
+    const engine = new ExecutionEngine({ feePerUnit: 0, slippagePerUnit: 0 });
+    expect(() =>
+      engine.submit({ id: "a", side: "sell", quantity: 1, fillMode: "close", reduceOnly: true }, 0)
+    ).toThrow(/open position/);
+    expect(engine.pendingCount()).toBe(0);
+  });
+
+  it("rejects duplicate order ids without disturbing the original", () => {
+    const engine = new ExecutionEngine({ feePerUnit: 0, slippagePerUnit: 0 });
+    engine.submit({ id: "a", side: "buy", quantity: 1, fillMode: "close" }, 0);
+    expect(() => engine.submit({ id: "a", side: "sell", quantity: 1, fillMode: "close" }, 0)).toThrow(/Duplicate/);
+    const fills = engine.process(state(0, 100, 101, 99, 100));
+    expect(fills).toHaveLength(1);
+    expect(fills[0].orderId).toBe("a");
   });
 });

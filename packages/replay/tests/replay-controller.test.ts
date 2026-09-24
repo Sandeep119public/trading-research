@@ -95,4 +95,64 @@ describe("ReplayController", () => {
       vi.useRealTimers();
     }
   });
+
+  it("step after finish returns null and emits nothing", () => {
+    const engine = new CandleMarketEngine(candles);
+    const replay = new ReplayController(engine);
+    const seen: number[] = [];
+    replay.subscribe(state => seen.push(state.candle.timestamp));
+    replay.reset(0);
+    replay.step();
+    replay.step();
+    expect(engine.finished()).toBe(true);
+    expect(replay.step()).toBeNull();
+    expect(seen).toEqual([1, 2, 3]);
+  });
+
+  it("play after finish stays paused", () => {
+    const engine = new CandleMarketEngine(candles);
+    const replay = new ReplayController(engine);
+    replay.reset(0);
+    replay.step();
+    replay.step();
+    expect(engine.finished()).toBe(true);
+    replay.play();
+    expect(replay.playing).toBe(false);
+  });
+
+  it("repeated play does not double-schedule the timer", () => {
+    vi.useFakeTimers();
+    try {
+      const engine = new CandleMarketEngine(candles);
+      const replay = new ReplayController(engine);
+      replay.reset(0);
+      replay.play();
+      replay.play();
+      vi.advanceTimersByTime(1000);
+      replay.pause();
+      expect(engine.getState().index).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("one subscription survives repeated resets", () => {
+    const engine = new CandleMarketEngine(candles);
+    const replay = new ReplayController(engine);
+    const seen: number[] = [];
+    replay.subscribe(state => seen.push(state.candle.timestamp));
+    replay.reset(0);
+    replay.step();
+    replay.reset(0);
+    replay.step();
+    expect(seen).toEqual([1, 2, 1, 2]);
+  });
+
+  it("reset preserves the speed preference", () => {
+    const engine = new CandleMarketEngine(candles);
+    const replay = new ReplayController(engine);
+    replay.setSpeed(5);
+    replay.reset(0);
+    expect(replay.speed).toBe(5);
+  });
 });

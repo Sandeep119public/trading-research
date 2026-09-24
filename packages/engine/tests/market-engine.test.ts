@@ -45,4 +45,20 @@ describe("CandleMarketEngine", () => {
     engine.reset(0);
     expect(engine.step().state.candle.close).toBe(101);
   });
+
+  it("rejects an empty dataset", () => {
+    expect(() => new CandleMarketEngine([])).toThrow(/at least one candle/);
+  });
+
+  it("accepts non-contiguous but increasing timestamps", () => {
+    const engine = new CandleMarketEngine([
+      { timestamp: 1, open: 100, high: 102, low: 99, close: 101, volume: 10 },
+      { timestamp: 5, open: 101, high: 103, low: 100, close: 102, volume: 11 },
+      { timestamp: 10, open: 102, high: 104, low: 101, close: 103, volume: 12 }
+    ]);
+    engine.reset(0);
+    expect(engine.step().state.candle.close).toBe(101);
+    expect(engine.step().state.candle.close).toBe(102);
+    expect(engine.step().state.candle.close).toBe(103);
+  });
 });
