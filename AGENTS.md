@@ -18,6 +18,7 @@ Read ARCHITECTURE.md before touching code and re-check it before any module-boun
 - New top-level packages/services require an ARCHITECTURE.md update in the same change.
 - When a code change invalidates documentation, update the documentation in the same commit and review the changed behavior against it before reporting completion.
 - Every reset API must reset all mutable state owned by that subsystem. Test reset behavior directly rather than relying on a later operation to reinitialize the state.
+- When something looks like an inherent limitation ("library behavior", "can't be changed", "reset already covers it"), check for an uncalled API or an unreset field before accepting it. On this codebase that pattern has hit three times: `BacktestDriver` missing engine/execution/portfolio resets, UI `orderSeq` surviving `ExecutionEngine.reset()`, and chart viewport scroll retained across `setData` when `ITimeScaleApi.resetTimeScale()` existed but nothing called it.
 - Do not add a dependency when small local code is sufficient.
 - Do not build deferred features before V1 is solid.
 - Prefer deleting obsolete code over layering patches.

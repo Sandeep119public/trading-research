@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { createChart, CandlestickSeries, HistogramSeries, type ISeriesApi } from "lightweight-charts";
+import { createChart, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi } from "lightweight-charts";
 import { BinanceDataManager } from "@trading-research/data";
 import { CandleMarketEngine } from "@trading-research/engine";
 import { ExecutionEngine } from "@trading-research/execution";
@@ -46,8 +46,10 @@ function rangeLabel(): string {
 
 function App() {
   const chartRef = React.useRef<HTMLDivElement>(null);
+  const chartApi = React.useRef<IChartApi | null>(null);
   const candleSeries = React.useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeries = React.useRef<ISeriesApi<"Histogram"> | null>(null);
+  const pendingTimeScaleReset = React.useRef(false);
   const [stack, setStack] = React.useState<Stack | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [playing, setPlaying] = React.useState(false);
@@ -95,15 +97,26 @@ function App() {
       timeScale: { borderColor: "#27272a", timeVisible: true }
     });
     const series = chart.addSeries(CandlestickSeries, {});
-    const volume = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "" });
-    volume.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+    // Volume gets its own pane: overlay scaleMargins are not honored for
+    // overlay series in lightweight-charts v5, which left full-height volume
+    // bars hiding the candles. A stretched pane confines volume structurally.
+    const volumePane = chart.addPane();
+    volumePane.setStretchFactor(0.18);
+    const volume = volumePane.addSeries(HistogramSeries, { priceFormat: { type: "volume" } });
+    chartApi.current = chart;
     candleSeries.current = series;
     volumeSeries.current = volume;
     const resize = () => chart.applyOptions({ width: chartRef.current?.clientWidth ?? 0, height: chartRef.current?.clientHeight ?? 0 });
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(chartRef.current);
-    return () => { observer.disconnect(); chart.remove(); };
+    return () => {
+      observer.disconnect();
+      chartApi.current = null;
+      candleSeries.current = null;
+      volumeSeries.current = null;
+      chart.remove();
+    };
   }, [stack]);
 
   React.useEffect(() => {
@@ -113,6 +126,12 @@ function App() {
     const points = toChartPoints(state.visibleCandles);
     series.setData(points.candles);
     volume.setData(points.volumes);
+    // setData retains the prior viewport (library default). Reset must restore
+    // zoom/scroll after the shrunk dataset lands, not before.
+    if (pendingTimeScaleReset.current) {
+      pendingTimeScaleReset.current = false;
+      chartApi.current?.timeScale().resetTimeScale();
+    }
   }, [state]);
 
   React.useEffect(() => {
@@ -132,6 +151,7 @@ function App() {
   const reset = () => {
     execution.reset();
     portfolio.reset(STARTING_CAPITAL);
+    pendingTimeScaleReset.current = true;
     replay.reset(0);
     setState(engine.getState());
     setPortfolioState(portfolio.getState());
