@@ -21,7 +21,7 @@ Read ARCHITECTURE.md before touching code and re-check it before any module-boun
 - Prefer deleting obsolete code over layering patches.
 
 ## Working style
-Build vertical slices in architecture order. Before changing a boundary, identify the owning module and fix the interface there. After non-trivial changes, run tests and build before reporting completion.
+Build vertical slices in architecture order. Before changing a boundary, identify the owning module and fix the interface there. After non-trivial changes, run tests and build before reporting completion. Never report a build, test, or CI result without showing the actual command and relevant output that proves it.
 
 ## Testing
 Engine, execution, and portfolio logic require unit tests. Replay/backtest must be deterministic across repeated runs. UI tests can lag behind engine tests during V1.
