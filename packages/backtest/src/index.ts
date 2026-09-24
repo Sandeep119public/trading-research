@@ -44,7 +44,6 @@ export class BacktestDriver {
   private readonly engine: CandleMarketEngine;
   private readonly execution: ExecutionEngine;
   private readonly portfolio: Portfolio;
-  private orderSeq = 1;
 
   constructor(candles: readonly Candle[], config: BacktestConfig) {
     if (candles.length === 0) throw new Error("BacktestDriver requires at least one candle");
@@ -58,15 +57,14 @@ export class BacktestDriver {
     this.portfolio = new Portfolio(config.startingCapital);
   }
 
-  reset(): void {
+  reset(startIndex = 0): void {
     this.execution.reset();
     this.portfolio.reset(this.config.startingCapital);
-    this.orderSeq = 1;
+    this.engine.reset(startIndex);
   }
 
   run(strategy: Strategy, startIndex = 0): BacktestResult {
-    this.reset();
-    this.engine.reset(startIndex);
+    this.reset(startIndex);
     const fills: Fill[] = [];
     const equityCurve: number[] = [];
     while (!this.engine.finished()) {
@@ -77,10 +75,15 @@ export class BacktestDriver {
       }
       this.portfolio.markToMarket(state.candle.close);
       equityCurve.push(this.portfolio.getEquity());
-      for (const signal of strategy.onBar(state)) {
+      const signals = strategy.onBar(state);
+      if (signals.length > 1) {
+        throw new Error("V1 strategies may return at most one signal per bar");
+      }
+      const signal = signals[0];
+      if (signal !== undefined) {
         this.execution.submit(
           {
-            id: `backtest-${this.orderSeq++}`,
+            id: this.execution.nextOrderId("backtest"),
             side: signal.side,
             quantity: signal.quantity,
             fillMode: "nextOpen",
