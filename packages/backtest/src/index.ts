@@ -1,19 +1,8 @@
 import { CandleMarketEngine } from "@trading-research/engine";
 import { ExecutionEngine } from "@trading-research/execution";
 import { Portfolio } from "@trading-research/portfolio";
-import type { Candle, Fill, MarketState, OrderSide } from "@trading-research/shared";
-
-export interface StrategySignal {
-  side: OrderSide;
-  quantity: number;
-  stopLoss?: number;
-  takeProfit?: number;
-  reduceOnly?: boolean;
-}
-
-export interface Strategy {
-  onBar(state: MarketState): StrategySignal[];
-}
+import type { Strategy } from "@trading-research/strategy";
+import type { Candle, Fill } from "@trading-research/shared";
 
 export interface BacktestConfig {
   startingCapital: number;
@@ -65,6 +54,11 @@ export class BacktestDriver {
 
   run(strategy: Strategy, startIndex = 0): BacktestResult {
     this.reset(startIndex);
+    // A strategy remembers state across bars (whether it is in a position,
+    // indicator state). The driver drives the run, so it clears that state
+    // alongside its own before every run — otherwise reusing one strategy
+    // instance would silently change the second run's trades and equity.
+    strategy.reset?.();
     const fills: Fill[] = [];
     const equityCurve: number[] = [];
     while (!this.engine.finished()) {

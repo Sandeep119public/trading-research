@@ -55,7 +55,8 @@ interface MarketEngine {
 }
 
 interface Strategy {
-  onBar(state: MarketState): StrategySignal[]
+  onBar(context: StrategyContext): StrategySignal[]
+  reset?(): void
 }
 
 interface ExecutionEngine {
@@ -89,8 +90,19 @@ UI selection → BinanceDataManager.loadRange() → createHttpFetchKlines() → 
 - Explicitly out of scope, now and later: trading/simulation logic, auth, symbols/timeframes outside the universe above.
 
 ## V1 strategy constraint
-- A strategy may return at most one signal per bar.
-- BacktestDriver rejects multiple signals before submitting any of them.
+- A strategy may return at most one signal per bar. The ExecutionEngine holds a single pending order, so a second signal in the same bar could never be honored.
+- BacktestDriver rejects multiple signals **before submitting any of them**: it throws, it does not silently take the first.
+- `StrategyContext` is the engine's `MarketState` at bar T (`candle`, `index`, `visibleCandles`), where `visibleCandles` is bars 0..T by construction. That slice is the Future Data Rule made structural, so a strategy that computes from `visibleCandles` cannot read past T.
+- A strategy may remember state across bars (position flags, indicator state). `BacktestDriver.run()` calls `strategy.reset?.()` before every run, alongside its own resets, so one strategy instance can be reused and still produce identical results. A strategy with no cross-bar state need not define `reset`.
+
+## Sample strategy: EMA(20)/EMA(50) cross (implemented)
+`packages/strategy` owns the contract and the one sample strategy that exercises it, `EmaCrossStrategy`:
+
+- Long-only: fast crosses above slow → enter long; fast crosses below slow → **exit long (flatten)**. It never opens a short, so a first cross below while flat emits nothing, and an up-cross while already long is ignored (V1 forbids pyramiding).
+- Size is strategy config (`quantity`): V1 has no sizing model, and fees/slippage stay in BacktestConfig, never in the strategy.
+- Both EMAs are recomputed from `context.visibleCandles` on every bar — pure, idempotent when a bar is seen twice, and structurally unable to see past T. The only remembered state is whether the strategy is in a position, cleared by `reset()`.
+- Wiring costs nothing from the engine side: BacktestDriver hands it the same bar view as any other strategy (`StrategyContext`), and MarketEngine, ExecutionEngine, and Portfolio are untouched.
+- Determinism: identical candles + params produce identical fills, equity curve, and metrics, including when the same instance is run twice on the same driver.
 
 ## Execution model
 - V1 is candle mode only.

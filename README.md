@@ -16,7 +16,8 @@ The current foundation is implemented and verified in local development and GitH
 - ExecutionEngine with deterministic candle-mode fills, SL/TP, fees, and slippage
 - Portfolio with netting, realized/unrealized P&L, fees, and equity
 - BacktestDriver reusing the same MarketEngine, ExecutionEngine, and Portfolio
-- deterministic engine, replay, execution, portfolio, backtest, and data tests
+- `EmaCrossStrategy`, an EMA(20)/EMA(50) crossover on the Strategy contract: long-only, no lookahead, at most one signal per bar
+- deterministic engine, strategy, replay, execution, portfolio, backtest, and data tests
 - Lightweight Charts web UI
 
 ## Data service
@@ -37,6 +38,16 @@ VITE_DATA_API_URL=http://127.0.0.1:8787 npm run dev
 Without a bound KV namespace the worker still caches, just per isolate; add the `kv_namespaces` block in `wrangler.toml` to share one cache across isolates.
 
 `wrangler` is pinned to `4.86.0` and `compatibility_date` to `2026-05-03`: every newer wrangler requires Node 22, and that pinned version's `workerd` knows dates up to `2026-05-03`. Deploy and local `wrangler dev` therefore run under the same date; raise both together when Node moves to 22 (the reasoning is recorded in `wrangler.toml`).
+
+## Sample strategy
+
+`packages/strategy` owns the Strategy contract — `onBar(context: StrategyContext): StrategySignal[]`, at most one signal per bar — and ships `EmaCrossStrategy`: EMA(20) crossing EMA(50), long-only (cross above enters long, cross below exits long). Both EMAs are computed from `context.visibleCandles` only, so the Future Data Rule holds by construction.
+
+With the data service running, the same strategy can be driven over real BTCUSDT candles end to end: data service → HTTP transport → `BinanceDataManager` → `BacktestDriver`. That suite is opt-in (CI has no service) and is skipped unless `DATA_API_URL` is set:
+
+```bash
+DATA_API_URL=http://127.0.0.1:8787 npm test --workspace @trading-research/backtest
+```
 
 ## Development
 
