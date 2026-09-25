@@ -20,6 +20,8 @@ Replay calls `step()` on a timer, user-controlled (play/pause/step/speed). Backt
 | Positions, P&L | Portfolio |
 | Chart rendering | Chart (UI) |
 | UI-only state | React state/hooks (Zustand only if app-wide state later requires it) |
+| Which symbol/timeframe is on screen | UI (view selection, not trading state) |
+| Load status shown in the Data Manager panel | DataManager |
 | Fetching/caching raw data | Data Service (Worker) |
 
 If two modules can both mutate the same trading state, that is a design bug. The UI never updates a position directly; it sends intents to ExecutionEngine.
@@ -63,8 +65,28 @@ interface ExecutionEngine {
 }
 ```
 
-## Data service contract
-The server does exactly one thing: give historical market data. It fetches from Binance, caches to Parquet, and serves over HTTP. It contains no trading logic, authentication, or portfolio state.
+## Data path (implemented)
+```
+UI selection → BinanceDataManager.loadRange() → createHttpFetchKlines() → services/data-api → Binance
+                                ↓
+                    validated, frozen Candle[] → MarketEngine
+```
+- The UI owns which symbol/timeframe is on screen (view selection) and builds a fresh `BinanceDataManager` per selection, so candles from two datasets can never mix. Selection change goes through the existing reset path: new stack, new chart, replay reset.
+- `BinanceDataManager` owns the candles and the load state the Data Manager panel reads: symbol, timeframe, loaded range, candle count, and status `idle | fetching | cached | error` (plus the error detail). `subscribe()` publishes transitions; `clear()` resets all of it.
+- The transport is `createHttpFetchKlines()`, a drop-in `FetchKlinesFn`. MarketEngine, ReplayController, ExecutionEngine, and Portfolio are untouched by the swap.
+- Loading and failure are real states: a failed range renders an explicit error, never an empty chart.
+
+## Data service contract (implemented)
+`services/data-api` is a Cloudflare Worker whose only job is serving historical OHLCV.
+
+- `GET /klines?symbol&timeframe&start&end[&limit]` answers with the Binance kline rows covering the whole range. `limit` is the upstream page size, never a truncation of the answer.
+- Supported universe: BTCUSDT, ETHUSDT, SOLUSDT and 1m, 5m, 15m, 1h. Declared once as `SUPPORTED_SYMBOLS` / `SUPPORTED_TIMEFRAMES` in `packages/data`, enforced by the service, and the only thing the UI offers. Anything else is a 400.
+- Reuses the shared `packages/data` pipeline instead of reimplementing it: `fetchKlinesRange()` (pagination guard, live-edge `dropFormingCandles()`, range selection), `normalizeBinanceKlines()` (validation), `expectedSeconds()` (coverage), `rangeIsClosed()` (cacheability), `MAX_PAGE_LIMIT`.
+- A candle that has not closed is never ingested, wherever the range came from: `fetchKlinesRange()` drops forming rows as of *now*, not as of the caller's `end`, so a request captured milliseconds ago still cannot smuggle in the current candle.
+- Coverage is checked for **every** range, live or not: `expectedSeconds()` clamps the demanded set to candles that could have closed, so a live edge is judged against closed data only, and a range whose candles have not closed yet demands its own opens instead of nothing. A hole in closed candles is a 422, never a short 200; a range with nothing closed is a 422, never an empty 200. The client's `loadRange()` applies the identical rule on the same helpers, so both sides agree on what "covered" means.
+- Caches only ranges made entirely of closed candles (`rangeIsClosed()`), in KV when bound and per-isolate memory otherwise: their answers can never change. A range that reaches the forming candle is refetched every time, because the closed set keeps growing.
+- Failure is always a non-200 with an `error` body: bad request 400, unknown path 404, non-GET 405, range that cannot be fully covered 422, upstream failure or invalid rows 502. A truncated 200 is never an outcome.
+- Explicitly out of scope, now and later: trading/simulation logic, auth, symbols/timeframes outside the universe above.
 
 ## V1 strategy constraint
 - A strategy may return at most one signal per bar.

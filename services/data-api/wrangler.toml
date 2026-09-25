@@ -1,0 +1,17 @@
+name = "trading-research-data-api"
+main = "src/worker.ts"
+# The API surface this Worker is written against: a deploy runs under this
+# date, and so does local `wrangler dev`, so the two never diverge.
+#
+# Ceiling, not preference: wrangler is pinned to 4.86.0 (every 4.87+ requires
+# Node 22, this machine runs Node 20) and that wrangler's workerd knows dates
+# up to 2026-05-03. Raising the date means moving Node and the wrangler pin
+# together. Nothing in this service depends on behavior newer than that date
+# (plain fetch/Request/Response), so the pin costs nothing today.
+compatibility_date = "2026-05-03"
+
+# Binding a KV namespace upgrades the per-isolate in-memory cache to a shared
+# one. Without it the worker still caches, just per isolate.
+# [[kv_namespaces]]
+# binding = "KV"
+# id = "<your-kv-namespace-id>"
