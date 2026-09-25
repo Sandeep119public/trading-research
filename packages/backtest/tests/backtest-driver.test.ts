@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CandleMarketEngine } from "@trading-research/engine";
+import { EmaCrossStrategy, type Strategy } from "@trading-research/strategy";
 import type { Candle, MarketState } from "@trading-research/shared";
-import { BacktestDriver, type Strategy } from "../src/index";
+import { BacktestDriver } from "../src/index";
 
 function candle(index: number, open: number, high: number, low: number, close: number): Candle {
   return { timestamp: 1000 + index, open, high, low, close, volume: 10 };
@@ -183,6 +184,73 @@ describe("BacktestDriver", () => {
           : [];
       }
     })).toThrow(/at most one signal per bar/);
+    // ...and it rejects them BEFORE submitting any of them: no order was
+    // allocated, nothing is pending, and the portfolio still holds exactly the
+    // starting capital.
+    const execution = (driver as unknown as {
+      execution: { pendingCount(): number; nextOrderId(prefix: string): string };
+    }).execution;
+    expect(execution.pendingCount()).toBe(0);
+    expect(execution.nextOrderId("probe")).toBe("probe-1");
+    const portfolio = (driver as unknown as { portfolio: { getEquity(): number } }).portfolio;
+    expect(portfolio.getEquity()).toBe(1000);
+  });
+
+  it("clears strategy state before every run", () => {
+    const trace: string[] = [];
+    const driver = new BacktestDriver(
+      [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)],
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+    );
+    const strategy: Strategy = {
+      onBar() {
+        trace.push("bar");
+        return [];
+      },
+      reset() {
+        trace.push("reset");
+      }
+    };
+    driver.run(strategy);
+    driver.run(strategy);
+    expect(trace).toEqual(["reset", "bar", "bar", "reset", "bar", "bar"]);
+  });
+
+  it("produces identical results when one EmaCrossStrategy instance is run twice", () => {
+    // fast=2/slow=3 crosses above at bar 4, fills at bar 5's open, and the run
+    // ends still long. A second run on the same instance would skip that entry
+    // unless the driver cleared the strategy's position first.
+    const closes = [10, 10, 10, 10, 20, 30, 35];
+    const candles = closes.map((close, i) => candle(i, close, close, close, close));
+    const config = { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 };
+    const driver = new BacktestDriver(candles, config);
+    const strategy = new EmaCrossStrategy({ fast: 2, slow: 3, quantity: 1 });
+    const first = driver.run(strategy);
+    const second = driver.run(strategy);
+    expect(first.fills).toHaveLength(1);
+    expect(first.fills[0]).toMatchObject({ side: "buy", index: 5 });
+    expect(second).toEqual(first);
+    // Same data and params with a fresh instance is identical too.
+    const fresh = new BacktestDriver(candles, config).run(new EmaCrossStrategy({ fast: 2, slow: 3, quantity: 1 }));
+    expect(fresh).toEqual(first);
+  });
+
+  it("starts the strategy flat at a middle startIndex", () => {
+    // The cross above happens before startIndex, so the strategy starts flat
+    // exactly like the portfolio does: the cross below at bar 6 must find a
+    // flat strategy and emit nothing, not a reduceOnly sell into an empty
+    // book (which ExecutionEngine would reject).
+    const closes = [10, 10, 10, 10, 20, 30, 10];
+    const candles = closes.map((close, i) => candle(i, close, close, close, close));
+    const driver = new BacktestDriver(
+      candles,
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+    );
+    const strategy = new EmaCrossStrategy({ fast: 2, slow: 3, quantity: 1 });
+    const result = driver.run(strategy, 5);
+    expect(result.fills).toHaveLength(0);
+    expect(result.equityCurve).toHaveLength(2);
+    expect(result.finalEquity).toBe(1000);
   });
 
   it("runs a single-candle dataset without failing", () => {
