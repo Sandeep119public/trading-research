@@ -1,11 +1,12 @@
+import { Portfolio } from "@trading-research/portfolio";
 import type { Fill } from "@trading-research/shared";
 
 export interface FillRow {
   fill: Fill;
-  /** Realized P&L contributed by this fill alone: 0 when it opens or adds to
-   * a position, (exit - entry) * closedQty when it closes one. Mirrors
-   * Portfolio.applyFill exactly, including its rule that fees never enter
-   * realized P&L (fees are summed separately in BacktestResult.feesPaid). */
+  /** Realized P&L contributed by this fill alone: the delta Portfolio's
+   * realizedPnl advances by on this fill — 0 when it opens or adds to a
+   * position, the close amount when it closes one. Fees never enter it
+   * because Portfolio keeps them out (BacktestResult.feesPaid sums them). */
   realizedPnl: number;
 }
 
@@ -35,18 +36,25 @@ const SORT_ACCESSORS: Record<FillSortKey, (row: FillRow) => number | string> = {
 };
 
 /**
- * Walk fills the way Portfolio.applyFill does — same-direction fills average
- * the entry, closing fills realize (exit - entry) * closedQty, an over-close
- * flips with the remainder — so every per-fill number in the results table and
- * every round-trip outcome is guaranteed to sum back to BacktestResult's
- * realizedPnl. Pure: the input fills are never mutated. Presentation-only
- * derivation; BacktestResult itself carries no win statistics.
+ * Derive display stats by walking a throwaway Portfolio — position
+ * accounting has exactly one owner: the netting rules (same-direction
+ * averaging, partial closes, over-close flips) and the fee-excluded
+ * realized P&L are Portfolio's, not a second copy maintained in the UI that
+ * could silently drift when Portfolio changes. Per-fill realized P&L is the
+ * delta of realizedPnl, so the table column telescopes back to
+ * BacktestResult's own metric; a trade ends where Portfolio says the
+ * position ends — flat, or its side flipped by an over-close (the remainder
+ * starts the next trade). On top of that sit only report semantics: a fill's
+ * fee charges the trade it acted on, and a trade still open on the last fill
+ * is not a completed round trip. Pure: input fills are never mutated, and
+ * BacktestResult itself carries no win statistics.
  */
 export function analyzeFills(fills: readonly Fill[]): FillStats {
+  // Starting capital never enters realizedPnl or position math; it only has
+  // to satisfy Portfolio's constructor.
+  const scratch = new Portfolio(1);
   const rows: FillRow[] = [];
-  let side: "long" | "short" | null = null;
-  let quantity = 0;
-  let entryPrice = 0;
+  let previousRealized = 0;
   let tradePnl = 0;
   let tradeFees = 0;
   let trades = 0;
@@ -63,41 +71,23 @@ export function analyzeFills(fills: readonly Fill[]): FillStats {
   };
 
   for (const fill of fills) {
-    let realizedPnl = 0;
-    if (side === null) {
-      side = fill.side === "buy" ? "long" : "short";
-      quantity = fill.quantity;
-      entryPrice = fill.price;
+    const sideBefore = scratch.getState().position?.side ?? null;
+    scratch.applyFill(fill);
+    const state = scratch.getState();
+    const realizedPnl = state.realizedPnl - previousRealized;
+    previousRealized = state.realizedPnl;
+    const sideAfter = state.position?.side ?? null;
+
+    if (sideBefore === null) {
+      // An opening fill starts the (fresh) trade; its fee belongs to it.
       tradeFees += fill.fee;
     } else {
-      const sameDirection =
-        (side === "long" && fill.side === "buy") || (side === "short" && fill.side === "sell");
-      if (sameDirection) {
-        const total = quantity + fill.quantity;
-        entryPrice = (entryPrice * quantity + fill.price * fill.quantity) / total;
-        quantity = total;
-        tradeFees += fill.fee;
-      } else {
-        const closeQuantity = Math.min(fill.quantity, quantity);
-        const unit = side === "long" ? fill.price - entryPrice : entryPrice - fill.price;
-        realizedPnl = unit * closeQuantity;
-        tradePnl += realizedPnl;
-        // The closing fill's fee belongs to the trade it closes. On a flip
-        // (fill larger than the position) the new trade starts fee-free.
-        tradeFees += fill.fee;
-        if (fill.quantity < quantity) {
-          quantity -= fill.quantity;
-        } else if (fill.quantity === quantity) {
-          closeRoundTrip();
-          side = null;
-          quantity = 0;
-          entryPrice = 0;
-        } else {
-          closeRoundTrip();
-          side = fill.side === "buy" ? "long" : "short";
-          quantity = fill.quantity - closeQuantity;
-          entryPrice = fill.price;
-        }
+      tradePnl += realizedPnl;
+      // The fill's fee charges the trade it acted on — including a flip
+      // fill, which closes the old trade; the remainder starts fee-free.
+      tradeFees += fill.fee;
+      if (sideAfter === null || sideAfter !== sideBefore) {
+        closeRoundTrip();
       }
     }
     rows.push({ fill, realizedPnl });
