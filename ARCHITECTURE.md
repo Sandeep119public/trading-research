@@ -19,6 +19,7 @@ Replay calls `step()` on a timer, user-controlled (play/pause/step/speed). Backt
 | Orders | ExecutionEngine |
 | Positions, P&L | Portfolio |
 | Chart rendering | Chart (UI) |
+| Backtest results report view | UI (calls BacktestDriver on demand, renders BacktestResult) |
 | UI-only state | React state/hooks (Zustand only if app-wide state later requires it) |
 | Which symbol/timeframe is on screen | UI (view selection, not trading state) |
 | Load status shown in the Data Manager panel | DataManager |
@@ -27,7 +28,7 @@ Replay calls `step()` on a timer, user-controlled (play/pause/step/speed). Backt
 If two modules can both mutate the same trading state, that is a design bug. The UI never updates a position directly; it sends intents to ExecutionEngine.
 
 ## The Future Data Rule
-At replay time T, no component may expose data with timestamp > T. Loading a full dataset and merely rendering the first N candles is a violation if an indicator or strategy can read the future array. The engine must make this structurally hard. Dataset candles are frozen at the engine/data boundary, so no consumer holding a state reference can mutate history either.
+At replay time T, no component may expose data with timestamp > T. Loading a full dataset and merely rendering the first N candles is a violation if an indicator or strategy can read the future array. The engine must make this structurally hard. The Future Data Rule governs the **replay view**: the replay chart and everything rendered alongside it. The backtest results report is a separate view over a completed run — see "Backtest results view" for that boundary. Dataset candles are frozen at the engine/data boundary, so no consumer holding a state reference can mutate history either.
 
 ## Repo layout
 ```
@@ -103,6 +104,15 @@ UI selection → BinanceDataManager.loadRange() → createHttpFetchKlines() → 
 - Both EMAs are recomputed from `context.visibleCandles` on every bar — pure, idempotent when a bar is seen twice, and structurally unable to see past T. The only remembered state is whether the strategy is in a position, cleared by `reset()`.
 - Wiring costs nothing from the engine side: BacktestDriver hands it the same bar view as any other strategy (`StrategyContext`), and MarketEngine, ExecutionEngine, and Portfolio are untouched.
 - Determinism: identical candles + params produce identical fills, equity curve, and metrics, including when the same instance is run twice on the same driver.
+
+## Backtest results view (implemented)
+The results panel is a report over a completed BacktestDriver run, kept structurally separate from replay:
+
+- Run is never gated on replay progress: `runEmaCrossBacktest()` builds its own BacktestDriver (its own MarketEngine, ExecutionEngine, and Portfolio instances) over the full loaded candle set, so a report run cannot touch replay state. Same engine/execution/portfolio classes as replay, per the core primitive.
+- The report renders in its own section with its own Lightweight Charts instance carrying the equity curve. Backtest-derived series are never written to the replay chart's canvas: the two views may be visible at once, but they never share a canvas or a series. That is what keeps the Future Data Rule true for the replay view while whole-run statistics stay available at any time.
+- Config mirrors the UI's replay stack: the same starting-capital constant, fee/slippage 0/0 (the UI has no fee inputs — a report must not invent numbers), and size fixed at 0.01 base units (V1 has no sizing model, so size is strategy config).
+- Derived display stats — per-fill realized P&L, trade count, win rate — are presentation-side walks of `Fill[]` in `apps/web/src/fill-analysis.ts` that mirror `Portfolio.applyFill` netting and keep fees out of realized P&L exactly as Portfolio does, so the numbers sum back to BacktestResult's own metrics. `BacktestResult` itself is unchanged: no new fields. Win rate counts completed round trips only (a still-open trade has no outcome) and renders "—" when there are none; a run with zero fills renders an explicit "No trades in this run" state, never an empty table that looks broken.
+- Determinism: same candles + config → identical `BacktestResult` (BacktestDriver's guarantee), so repeated runs render identical panels.
 
 ## Execution model
 - V1 is candle mode only.

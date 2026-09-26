@@ -14,9 +14,12 @@ import { CandleMarketEngine } from "@trading-research/engine";
 import { ExecutionEngine } from "@trading-research/execution";
 import { Portfolio, type PortfolioState } from "@trading-research/portfolio";
 import { ReplayController, type ReplaySpeed } from "@trading-research/replay";
-import type { MarketState } from "@trading-research/shared";
+import type { Candle, MarketState } from "@trading-research/shared";
 import { toChartPoints } from "./chart-points";
 import { syncFromMarket } from "./replay-sync";
+import { mountResultsChart } from "./results-chart";
+import { ResultsPanel, type BacktestView } from "./results-panel";
+import { runEmaCrossBacktest } from "./run-backtest";
 import "./styles.css";
 
 const STARTING_CAPITAL = 10000;
@@ -39,6 +42,9 @@ interface Stack {
   replay: ReplayController;
   execution: ExecutionEngine;
   portfolio: Portfolio;
+  /** The full loaded dataset, kept so a backtest report can run over the
+   * whole range — visibleCandles only ever reaches the replay position. */
+  candles: readonly Candle[];
 }
 
 function emptyDataState(symbol: SupportedSymbol, timeframe: SupportedTimeframe): DataManagerState {
@@ -66,6 +72,7 @@ function App() {
   const chartApi = React.useRef<IChartApi | null>(null);
   const candleSeries = React.useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeries = React.useRef<ISeriesApi<"Histogram"> | null>(null);
+  const resultsChartRef = React.useRef<HTMLDivElement>(null);
   const pendingTimeScaleReset = React.useRef(false);
 
   const [symbol, setSymbol] = React.useState<SupportedSymbol>(SUPPORTED_SYMBOLS[0]);
@@ -74,6 +81,7 @@ function App() {
     emptyDataState(SUPPORTED_SYMBOLS[0], "5m")
   );
   const [stack, setStack] = React.useState<Stack | null>(null);
+  const [backtest, setBacktest] = React.useState<BacktestView | null>(null);
   const [playing, setPlaying] = React.useState(false);
   const [speed, setSpeed] = React.useState<ReplaySpeed>(1);
   const [state, setState] = React.useState<MarketState | null>(null);
@@ -86,9 +94,12 @@ function App() {
 
     // A new selection means a new dataset: drop the previous stack so the
     // chart, replay, and portfolio can never show candles from two datasets.
+    // The backtest report belongs to the previous dataset too, so it goes
+    // with them.
     setStack(null);
     setState(null);
     setPortfolioState(null);
+    setBacktest(null);
     setPlaying(false);
 
     const manager = new BinanceDataManager({ symbol, timeframe, fetchKlines });
@@ -113,7 +124,7 @@ function App() {
         nextReplay.reset(0);
         portfolio.markToMarket(engine.getState().candle.close);
         setPortfolioState(portfolio.getState());
-        setStack({ engine, replay: nextReplay, execution, portfolio });
+        setStack({ engine, replay: nextReplay, execution, portfolio, candles });
       })
       .catch(() => {
         // The manager has already published status "error" plus its message;
@@ -177,6 +188,16 @@ function App() {
     stack?.replay.setSpeed(speed);
   }, [speed, stack]);
 
+  // The report chart lives in the results section's own container — its own
+  // canvas, never the replay chart's — and remounts per run so each report
+  // opens with a fresh time scale.
+  React.useEffect(() => {
+    if (backtest === null) return;
+    const container = resultsChartRef.current;
+    if (container === null) return;
+    return mountResultsChart(container, backtest.candles, backtest.result.equityCurve);
+  }, [backtest]);
+
   const changeSymbol = (next: SupportedSymbol) => {
     setSymbol(next);
     setDataState(emptyDataState(next, timeframe));
@@ -210,6 +231,18 @@ function App() {
     if (!stack) return;
     if (playing) stack.replay.pause();
     else stack.replay.play();
+  };
+
+  const runBacktest = () => {
+    if (!stack) return;
+    const result = runEmaCrossBacktest(stack.candles, {
+      startingCapital: STARTING_CAPITAL,
+      // Same per-fill config as the replay stack's ExecutionEngine: the UI
+      // has no fee/slippage inputs, and a report must not invent numbers.
+      feePerUnit: 0,
+      slippagePerUnit: 0
+    });
+    setBacktest({ result, candles: stack.candles, symbol, timeframe });
   };
 
   const submitIntent = (side: "buy" | "sell") => {
@@ -257,6 +290,7 @@ function App() {
         <div ref={chartRef} className="chart" />
         {!loaded && <div className="chart-placeholder">{placeholder}</div>}
       </section>
+      <ResultsPanel view={backtest} loaded={loaded} onRun={runBacktest} chartRef={resultsChartRef} />
       <aside className="data-panel">
         <h2>Data Manager</h2>
         <dl>

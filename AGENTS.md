@@ -28,3 +28,5 @@ Build vertical slices in architecture order. Before changing a boundary, identif
 
 ## Testing
 Engine, execution, and portfolio logic require unit tests. Replay/backtest must be deterministic across repeated runs. UI tests can lag behind engine tests during V1.
+
+The opt-in live data suite (`DATA_API_URL=... npm test --workspace @trading-research/backtest`) is skipped in CI; rerun it by hand when strategy or BacktestDriver logic changes.
