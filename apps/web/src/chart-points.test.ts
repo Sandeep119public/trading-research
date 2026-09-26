@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Candle } from "@trading-research/shared";
-import { toChartPoints } from "./chart-points";
+import { toChartPoints, toEquityPoints } from "./chart-points";
 
 function candle(timestamp: number, open: number, high: number, low: number, close: number, volume: number): Candle {
   return { timestamp, open, high, low, close, volume };
@@ -41,5 +41,31 @@ describe("toChartPoints", () => {
       expect(points.candles[i]).toEqual({ time: c.timestamp, open: c.open, high: c.high, low: c.low, close: c.close });
       expect(points.volumes[i]).toEqual({ time: c.timestamp, value: c.volume });
     });
+  });
+});
+
+describe("toEquityPoints", () => {
+  it("maps empty input to empty output", () => {
+    expect(toEquityPoints([], [])).toEqual([]);
+  });
+
+  it("pairs each equity value with its candle timestamp in order", () => {
+    const candles = [
+      candle(1700000000, 100, 101, 99, 100.5, 10),
+      candle(1700000300, 100.5, 102, 100, 101.5, 12),
+      candle(1700000600, 101.5, 103, 101, 102.5, 14)
+    ];
+    expect(toEquityPoints(candles, [10000, 10010.5, 9995])).toEqual([
+      { time: 1700000000, value: 10000 },
+      { time: 1700000300, value: 10010.5 },
+      { time: 1700000600, value: 9995 }
+    ]);
+  });
+
+  it("rejects a curve that does not match its candles", () => {
+    const candles = [candle(1700000000, 100, 101, 99, 100.5, 10)];
+    expect(() => toEquityPoints(candles, [10000, 10001])).toThrow(RangeError);
+    expect(() => toEquityPoints([], [10000])).toThrow("same length");
+    expect(() => toEquityPoints(candles, [])).toThrow("same length");
   });
 });
