@@ -372,6 +372,16 @@ export async function fetchKlinesRange(config: FetchRangeConfig): Promise<Binanc
       paginationComplete = true;
       break;
     }
+    // A transport may answer whole ranges rather than single pages (the HTTP
+    // data service does: `limit` is its upstream page size, never a truncation
+    // of the answer). A full-size answer is therefore not proof of more pages:
+    // stop as soon as the accumulated rows cover every closed candle the range
+    // implies. Without this, a live-edge range issues a follow-up request that
+    // sits entirely inside the still-forming candle, which no server can cover.
+    if (coversExpected(raw, range, timeframe)) {
+      paginationComplete = true;
+      break;
+    }
     const lastOpen = rows[rows.length - 1][0];
     if (!Number.isFinite(lastOpen)) throw new Error("Malformed kline page: last openTime is not a number");
     cursor = lastOpen + intervalMs;
@@ -393,6 +403,23 @@ function assertLimit(limit: number): void {
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_PAGE_LIMIT) {
     throw new RangeError(`limit must be an integer in 1..${MAX_PAGE_LIMIT}`);
   }
+}
+
+/**
+ * True when the accumulated rows already contain every closed candle the
+ * range implies (the `expectedSeconds` definition of "fully covered"). Extra
+ * rows — e.g. a still-forming candle a direct upstream returns — are ignored,
+ * and malformed rows are skipped here and left for the normalizer to reject.
+ */
+function coversExpected(raw: readonly BinanceKline[], range: DataRange, timeframe: Timeframe): boolean {
+  const have = new Set<number>();
+  for (const row of raw) {
+    if (!Array.isArray(row) || row.length < 7) continue;
+    const openTime = row[0];
+    if (!Number.isFinite(openTime)) continue;
+    have.add(Math.floor(openTime / 1000));
+  }
+  return expectedSeconds(range, timeframe).every(ts => have.has(ts));
 }
 
 export type DataManagerStatus = "idle" | "fetching" | "cached" | "error";

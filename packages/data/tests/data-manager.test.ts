@@ -217,6 +217,27 @@ describe("BinanceDataManager", () => {
     expect(fetch).toHaveBeenCalledTimes(500);
   });
 
+  it("stops paging when a whole-range answer already covers a live-edge range", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(T0 + 2 * MIN + 30_000);
+    // Emulates the data service: it answers whole ranges (never the forming
+    // candle) and 422s when nothing in the requested range has closed — so a
+    // spurious follow-up page inside the forming candle fails loudly, exactly
+    // as the live service does.
+    const closed = [rows[0], rows[1]];
+    const fetch = vi.fn(async ({ startTime, endTime }: { startTime: number; endTime: number }) => {
+      const inRange = closed.filter(r => r[0] >= startTime && r[0] <= endTime);
+      if (inRange.length === 0) throw new Error("Data service responded 422: range is not fully covered");
+      return inRange;
+    });
+    const manager = new BinanceDataManager({ symbol: "BTCUSDT", timeframe: "1m", fetchKlines: fetch as never });
+    // Two closed candles with limit 2: the full-size answer used to be
+    // mistaken for "more pages", triggering a second request for the forming
+    // candle's span and surfacing its 422 to the user.
+    const candles = await manager.loadRange({ startTime: T0, endTime: Date.now() - 1000 }, 2);
+    expect(candles.map(c => c.timestamp)).toEqual([T0 / 1000, (T0 + MIN) / 1000]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("returns timeframe-aligned candles inside an unaligned requested range", async () => {
     const fetch = vi.fn(async () => rows);
     const manager = new BinanceDataManager({ symbol: "BTCUSDT", timeframe: "1m", fetchKlines: fetch as never });
