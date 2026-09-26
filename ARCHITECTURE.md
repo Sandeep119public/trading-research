@@ -20,6 +20,7 @@ Replay calls `step()` on a timer, user-controlled (play/pause/step/speed). Backt
 | Positions, P&L | Portfolio |
 | Chart rendering | Chart (UI) |
 | Backtest results report view | UI (calls BacktestDriver on demand, renders BacktestResult) |
+| Session trade config (fee/slippage/size inputs) | UI (single session state; execution and backtest configs derive from it) |
 | UI-only state | React state/hooks (Zustand only if app-wide state later requires it) |
 | Which symbol/timeframe is on screen | UI (view selection, not trading state) |
 | Load status shown in the Data Manager panel | DataManager |
@@ -64,6 +65,7 @@ interface ExecutionEngine {
   nextOrderId(prefix: string): string
   submit(order: OrderIntent, currentIndex: number): void
   process(market: MarketState): Fill[]
+  updateConfig(config: ExecutionConfig): void
 }
 ```
 
@@ -110,7 +112,7 @@ The results panel is a report over a completed BacktestDriver run, kept structur
 
 - Run is never gated on replay progress: `runEmaCrossBacktest()` builds its own BacktestDriver (its own MarketEngine, ExecutionEngine, and Portfolio instances) over the full loaded candle set, so a report run cannot touch replay state. Same engine/execution/portfolio classes as replay, per the core primitive.
 - The report renders in its own section with its own Lightweight Charts instance carrying the equity curve. Backtest-derived series are never written to the replay chart's canvas: the two views may be visible at once, but they never share a canvas or a series. That is what keeps the Future Data Rule true for the replay view while whole-run statistics stay available at any time.
-- Config mirrors the UI's replay stack: the same starting-capital constant, fee/slippage 0/0 (the UI has no fee inputs — a report must not invent numbers), and size fixed at 0.01 base units (V1 has no sizing model, so size is strategy config).
+- Trade assumptions are user-set, not hardcoded: the UI owns one session `TradeConfig` (fee/slippage/size, plain number inputs beside the replay trading controls and the backtest Run control, two views of one stored value). Each backtest run maps it to `BacktestConfig` — which extends `ExecutionConfig` with `startingCapital` and `size`, so fee/slippage have one type shared with ExecutionEngine — and the replay stack's ExecutionEngine is created from it and live-updated on every valid edit (`updateConfig`, which never touches pending orders, open risk, or the order-id allocator — reconfiguration is not a reset). `size` feeds the strategy's quantity through the run wiring; the driver validates it at the config boundary but never interprets strategy params. Invalid input shows a visible error and disables trading and Run instead of clamping or leaking NaN into an engine. Defaults are zero-cost (fee 0, slippage 0, size 0.01), so existing behavior is unchanged until the user edits a field.
 - Derived display stats — per-fill realized P&L, trade count, win rate — are computed in `apps/web/src/fill-analysis.ts` by walking a throwaway `Portfolio` instance, so position accounting has exactly one owner and the UI holds no second copy of the netting rules that could drift when Portfolio changes. Per-fill realized P&L is the delta of `realizedPnl` (fees stay out because Portfolio keeps them out), and on top of that sit only report semantics: round-trip boundaries (position flat, or side flipped by an over-close), per-trade fee attribution, and win/loss classification — so the numbers sum back to BacktestResult's own metrics. `BacktestResult` itself is unchanged: no new fields. Win rate counts completed round trips only (a still-open trade has no outcome) and renders "—" when there are none; a run with zero fills renders an explicit "No trades in this run" state, never an empty table that looks broken.
 - Determinism: same candles + config → identical `BacktestResult` (BacktestDriver's guarantee), so repeated runs render identical panels.
 

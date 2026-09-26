@@ -177,4 +177,54 @@ describe("ExecutionEngine", () => {
     expect(fills).toHaveLength(1);
     expect(fills[0].orderId).toBe("a");
   });
+
+  it("applies updated fees and slippage to subsequent fills only", () => {
+    const engine = new ExecutionEngine({ feePerUnit: 0, slippagePerUnit: 0 });
+    engine.submit({ id: "a", side: "buy", quantity: 2, fillMode: "close" }, 0);
+    const before = engine.process(state(0, 100, 101, 99, 100));
+    expect(before[0].price).toBeCloseTo(100);
+    expect(before[0].fee).toBeCloseTo(0);
+
+    engine.updateConfig({ feePerUnit: 1, slippagePerUnit: 0.5 });
+    engine.submit({ id: "b", side: "sell", quantity: 2, fillMode: "close", reduceOnly: true }, 1);
+    const after = engine.process(state(1, 100, 101, 99, 102));
+    expect(after).toHaveLength(1);
+    expect(after[0].price).toBeCloseTo(101.5);
+    expect(after[0].fee).toBeCloseTo(2);
+  });
+
+  it("rejects an invalid update without touching the active config", () => {
+    const engine = new ExecutionEngine({ feePerUnit: 1, slippagePerUnit: 0.5 });
+    expect(() => engine.updateConfig({ feePerUnit: -1, slippagePerUnit: 0.5 })).toThrow(RangeError);
+    expect(() => engine.updateConfig({ feePerUnit: 1, slippagePerUnit: NaN })).toThrow(RangeError);
+    engine.submit({ id: "a", side: "buy", quantity: 2, fillMode: "close" }, 0);
+    const fills = engine.process(state(0, 100, 101, 99, 100));
+    expect(fills[0].price).toBeCloseTo(100.5);
+    expect(fills[0].fee).toBeCloseTo(2);
+  });
+
+  it("preserves pending orders, open risk, and the order sequence across an update", () => {
+    const engine = new ExecutionEngine({ feePerUnit: 0, slippagePerUnit: 0 });
+    expect(engine.nextOrderId("m")).toBe("m-1");
+    engine.submit({ id: "m-1", side: "buy", quantity: 1, fillMode: "close" }, 0);
+    engine.updateConfig({ feePerUnit: 2, slippagePerUnit: 1 });
+    expect(engine.pendingCount()).toBe(1);
+    expect(engine.nextOrderId("m")).toBe("m-2");
+    const fills = engine.process(state(0, 100, 101, 99, 100));
+    expect(fills).toHaveLength(1);
+    expect(fills[0].price).toBeCloseTo(101);
+    expect(fills[0].fee).toBeCloseTo(2);
+    expect(engine.hasOpenRisk()).toBe(true);
+  });
+
+  it("keeps the updated config across reset (reset is not a config revert)", () => {
+    const engine = new ExecutionEngine({ feePerUnit: 0, slippagePerUnit: 0 });
+    engine.updateConfig({ feePerUnit: 3, slippagePerUnit: 0 });
+    engine.submit({ id: "a", side: "buy", quantity: 1, fillMode: "close" }, 0);
+    engine.reset();
+    expect(engine.pendingCount()).toBe(0);
+    engine.submit({ id: "a", side: "buy", quantity: 2, fillMode: "close" }, 0);
+    const fills = engine.process(state(0, 100, 101, 99, 100));
+    expect(fills[0].fee).toBeCloseTo(6);
+  });
 });

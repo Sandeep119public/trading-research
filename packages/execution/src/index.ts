@@ -37,16 +37,32 @@ function assertFiniteNonNegative(value: number, name: string): void {
   if (!Number.isFinite(value) || value < 0) throw new RangeError(`${name} must be a finite number >= 0`);
 }
 
+function assertExecutionConfig(config: ExecutionConfig): void {
+  assertFiniteNonNegative(config.feePerUnit, "feePerUnit");
+  assertFiniteNonNegative(config.slippagePerUnit, "slippagePerUnit");
+}
+
 export class ExecutionEngine {
-  private readonly config: ExecutionConfig;
+  private config: ExecutionConfig;
   private pending: PendingOrder | null = null;
   private risk: OpenRisk | null = null;
   private orderSeq = 1;
   private readonly usedIds = new Set<string>();
 
   constructor(config: ExecutionConfig) {
-    assertFiniteNonNegative(config.feePerUnit, "feePerUnit");
-    assertFiniteNonNegative(config.slippagePerUnit, "slippagePerUnit");
+    assertExecutionConfig(config);
+    this.config = { ...config };
+  }
+
+  /**
+   * Replace the per-fill fee/slippage config for subsequent fills — validated
+   * exactly like the constructor. Pending orders, open risk, and the order-id
+   * allocator are untouched: reconfiguration is not a reset, and reset() in
+   * turn never reverts the config. New fills use the new numbers; fills
+   * already produced are history.
+   */
+  updateConfig(config: ExecutionConfig): void {
+    assertExecutionConfig(config);
     this.config = { ...config };
   }
 

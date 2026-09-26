@@ -47,6 +47,16 @@ button:disabled:hover{background:#18181b}
 .neg{color:#f87171}
 .pos{color:#4ade80}
 
+/* Session trade config: one set of inputs near each control group, one
+   stored value behind both. */
+.config-inputs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.results-panel .config-inputs{margin:2px 0 10px}
+footer .config-inputs{margin-left:4px}
+.config-inputs label{display:flex;align-items:center;gap:4px;font-size:11px;color:#a1a1aa}
+.config-inputs input{width:64px;border:1px solid #3f3f46;background:#18181b;color:#e4e4e7;border-radius:6px;padding:6px 7px;font:inherit;font-size:12px}
+.config-inputs input:focus{outline:1px solid #a1a1aa}
+.config-error{color:#f87171;font-size:11px}
+
 @media(max-width:600px){
   .app main{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto auto}
   .chart-shell{grid-row:1}

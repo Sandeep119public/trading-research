@@ -18,7 +18,7 @@ describe("BacktestDriver", () => {
   it("fills a signal on candle N at candle N+1 open", () => {
     const driver = new BacktestDriver(
       [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 105.5), candle(2, 106, 107, 105, 106)],
-      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 1 }
     );
     const result = driver.run(buyOnce);
     expect(result.fills).toHaveLength(1);
@@ -30,7 +30,7 @@ describe("BacktestDriver", () => {
     const seen: Array<{ signalIndex: number; fillIndex: number | null }> = [];
     const driver = new BacktestDriver(
       [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 105.5)],
-      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 1 }
     );
     const result = driver.run({
       onBar(state) {
@@ -47,7 +47,7 @@ describe("BacktestDriver", () => {
   it("applies the same fees and slippage as replay execution", () => {
     const driver = new BacktestDriver(
       [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 105.5)],
-      { startingCapital: 1000, feePerUnit: 2, slippagePerUnit: 1 }
+      { startingCapital: 1000, feePerUnit: 2, slippagePerUnit: 1, size: 1 }
     );
     const result = driver.run(buyOnce);
     expect(result.fills[0].price).toBeCloseTo(106);
@@ -58,7 +58,7 @@ describe("BacktestDriver", () => {
   it("uses identical SL/TP behavior to replay (SL first)", () => {
     const driver = new BacktestDriver(
       [candle(0, 100, 101, 99, 100), candle(1, 100, 101, 99, 100), candle(2, 100, 120, 80, 100)],
-      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 1 }
     );
     const result = driver.run({
       onBar(state) {
@@ -72,7 +72,7 @@ describe("BacktestDriver", () => {
   it("takes equity from Portfolio with no duplicate accounting", () => {
     const driver = new BacktestDriver(
       [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)],
-      { startingCapital: 1000, feePerUnit: 1, slippagePerUnit: 0 }
+      { startingCapital: 1000, feePerUnit: 1, slippagePerUnit: 0, size: 1 }
     );
     const result = driver.run(buyOnce);
     expect(result.equityCurve).toHaveLength(2);
@@ -82,7 +82,7 @@ describe("BacktestDriver", () => {
 
   it("is identical for the same candles and strategy", () => {
     const candles = [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)];
-    const config = { startingCapital: 1000, feePerUnit: 0.5, slippagePerUnit: 0.25 };
+    const config = { startingCapital: 1000, feePerUnit: 0.5, slippagePerUnit: 0.25, size: 1 };
     const first = new BacktestDriver(candles, config).run(buyOnce);
     const second = new BacktestDriver(candles, config).run(buyOnce);
     expect(second).toEqual(first);
@@ -91,7 +91,7 @@ describe("BacktestDriver", () => {
   it("resets the owned market engine directly", () => {
     const driver = new BacktestDriver(
       [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)],
-      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 1 }
     );
     driver.run(buyOnce);
     driver.reset();
@@ -102,7 +102,7 @@ describe("BacktestDriver", () => {
   it("resets and reruns to identical trades and equity", () => {
     const driver = new BacktestDriver(
       [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)],
-      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 1 }
     );
     const first = driver.run(buyOnce);
     driver.reset();
@@ -114,7 +114,7 @@ describe("BacktestDriver", () => {
   it("honors a middle startIndex", () => {
     const driver = new BacktestDriver(
       [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 105.5), candle(2, 106, 107, 105, 106)],
-      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 1 }
     );
     const result = driver.run(
       {
@@ -133,7 +133,7 @@ describe("BacktestDriver", () => {
   it("handles a last-candle start without failing", () => {
     const driver = new BacktestDriver(
       [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)],
-      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 1 }
     );
     const result = driver.run(buyOnce, 1);
     expect(result.fills).toHaveLength(0);
@@ -144,7 +144,7 @@ describe("BacktestDriver", () => {
   it("leaves a final-bar signal unfilled and out of the results", () => {
     const driver = new BacktestDriver(
       [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)],
-      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 1 }
     );
     const result = driver.run({
       onBar(state) {
@@ -157,7 +157,7 @@ describe("BacktestDriver", () => {
 
   it("recovers cleanly after a throwing strategy", () => {
     const candles = [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)];
-    const config = { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 };
+    const config = { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 1 };
     const driver = new BacktestDriver(candles, config);
     expect(() =>
       driver.run({
@@ -175,7 +175,7 @@ describe("BacktestDriver", () => {
   it("rejects multiple strategy signals per bar in V1", () => {
     const driver = new BacktestDriver(
       [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)],
-      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 1 }
     );
     expect(() => driver.run({
       onBar(state) {
@@ -200,7 +200,7 @@ describe("BacktestDriver", () => {
     const trace: string[] = [];
     const driver = new BacktestDriver(
       [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110)],
-      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 1 }
     );
     const strategy: Strategy = {
       onBar() {
@@ -222,7 +222,7 @@ describe("BacktestDriver", () => {
     // unless the driver cleared the strategy's position first.
     const closes = [10, 10, 10, 10, 20, 30, 35];
     const candles = closes.map((close, i) => candle(i, close, close, close, close));
-    const config = { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 };
+    const config = { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 1 };
     const driver = new BacktestDriver(candles, config);
     const strategy = new EmaCrossStrategy({ fast: 2, slow: 3, quantity: 1 });
     const first = driver.run(strategy);
@@ -244,7 +244,7 @@ describe("BacktestDriver", () => {
     const candles = closes.map((close, i) => candle(i, close, close, close, close));
     const driver = new BacktestDriver(
       candles,
-      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 1 }
     );
     const strategy = new EmaCrossStrategy({ fast: 2, slow: 3, quantity: 1 });
     const result = driver.run(strategy, 5);
@@ -256,7 +256,7 @@ describe("BacktestDriver", () => {
   it("runs a single-candle dataset without failing", () => {
     const driver = new BacktestDriver(
       [candle(0, 100, 101, 99, 100)],
-      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 1 }
     );
     const result = driver.run(buyOnce);
     expect(result.equityCurve).toHaveLength(1);
@@ -268,7 +268,7 @@ describe("BacktestDriver", () => {
     const maxSeen: number[] = [];
     const driver = new BacktestDriver(
       [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 110), candle(2, 110, 111, 109, 110.5)],
-      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0 }
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 1 }
     );
     driver.run({
       onBar(state) {
@@ -280,5 +280,50 @@ describe("BacktestDriver", () => {
       }
     });
     expect(maxSeen).toEqual([1000, 1001, 1002]);
+  });
+
+  it("rejects an invalid size or fee at the config boundary", () => {
+    const candles = [candle(0, 100, 101, 99, 100), candle(1, 105, 106, 104, 105)];
+    expect(() => new BacktestDriver(candles, { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 0 }))
+      .toThrow(/size/);
+    expect(() => new BacktestDriver(candles, { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: -1 }))
+      .toThrow(RangeError);
+    expect(() => new BacktestDriver(candles, { startingCapital: 1000, feePerUnit: -1, slippagePerUnit: 0, size: 1 }))
+      .toThrow(RangeError);
+    expect(() => new BacktestDriver(candles, { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: -0.5, size: 1 }))
+      .toThrow(RangeError);
+  });
+
+  it("changes fills, fees, and prices when fee/slippage change (before/after)", () => {
+    const candles = [
+      candle(0, 100, 101, 99, 100),
+      candle(1, 105, 106, 104, 105),
+      candle(2, 106, 107, 105, 106)
+    ];
+    const roundTrip: Strategy = {
+      onBar(state) {
+        if (state.index === 0) return [{ side: "buy", quantity: 1 }];
+        if (state.index === 1) return [{ side: "sell", quantity: 1 }];
+        return [];
+      }
+    };
+    const flat = new BacktestDriver(
+      candles,
+      { startingCapital: 1000, feePerUnit: 0, slippagePerUnit: 0, size: 1 }
+    ).run(roundTrip);
+    const rich = new BacktestDriver(
+      candles,
+      { startingCapital: 1000, feePerUnit: 2, slippagePerUnit: 1, size: 1 }
+    ).run(roundTrip);
+    expect(flat.fills).toHaveLength(2);
+    expect(rich.fills).toHaveLength(2);
+    // Same signal bars, so the price gap is exactly the slippage: buys shift
+    // up, sells shift down.
+    expect(rich.fills[0].price - flat.fills[0].price).toBeCloseTo(1, 10);
+    expect(rich.fills[1].price - flat.fills[1].price).toBeCloseTo(-1, 10);
+    expect(flat.feesPaid).toBe(0);
+    expect(rich.feesPaid).toBeCloseTo(4, 10);
+    expect(rich.realizedPnl).not.toBeCloseTo(flat.realizedPnl, 10);
+    expect(rich.finalEquity).not.toBe(flat.finalEquity);
   });
 });
