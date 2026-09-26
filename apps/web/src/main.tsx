@@ -20,6 +20,16 @@ import { syncFromMarket } from "./replay-sync";
 import { mountResultsChart } from "./results-chart";
 import { ResultsPanel, type BacktestView } from "./results-panel";
 import { runEmaCrossBacktest } from "./run-backtest";
+import { ConfigInputs } from "./config-inputs";
+import {
+  DEFAULT_TRADE_CONFIG,
+  DEFAULT_TRADE_DRAFT,
+  parseTradeConfig,
+  toBacktestConfig,
+  toExecutionConfig,
+  type TradeConfigDraft,
+  type TradeConfigField
+} from "./trade-config";
 import "./styles.css";
 
 const STARTING_CAPITAL = 10000;
@@ -82,6 +92,12 @@ function App() {
   );
   const [stack, setStack] = React.useState<Stack | null>(null);
   const [backtest, setBacktest] = React.useState<BacktestView | null>(null);
+  // The session trade config, edited in both config input groups below.
+  // One stored value: replay and backtest derive from it, so they can never
+  // silently disagree. Invalid input blocks actions; it never reaches an engine.
+  const [draft, setDraft] = React.useState<TradeConfigDraft>(DEFAULT_TRADE_DRAFT);
+  const trade = parseTradeConfig(draft);
+  const tradeValid = trade.config !== null;
   const [playing, setPlaying] = React.useState(false);
   const [speed, setSpeed] = React.useState<ReplaySpeed>(1);
   const [state, setState] = React.useState<MarketState | null>(null);
@@ -113,7 +129,10 @@ function App() {
         const engine = new CandleMarketEngine(candles);
         const nextReplay = new ReplayController(engine);
         replay = nextReplay;
-        const execution = new ExecutionEngine({ feePerUnit: 0, slippagePerUnit: 0 });
+        // A stack created while the draft is invalid gets the zero-cost
+        // defaults; trading stays disabled and the error stays visible until
+        // the draft parses, at which point the effect below applies it live.
+        const execution = new ExecutionEngine(toExecutionConfig(trade.config ?? DEFAULT_TRADE_CONFIG));
         const portfolio = new Portfolio(STARTING_CAPITAL);
         nextReplay.subscribe((s: MarketState) => {
           setState(s);
@@ -188,6 +207,15 @@ function App() {
     stack?.replay.setSpeed(speed);
   }, [speed, stack]);
 
+  // A valid edit applies to the running replay engine immediately; an
+  // invalid one leaves the last valid config in place and disables every
+  // action, so NaN or a negative can never reach the engine. Deps are the
+  // raw draft strings — the parsed object is rebuilt every render.
+  React.useEffect(() => {
+    if (!stack || trade.config === null) return;
+    stack.execution.updateConfig(toExecutionConfig(trade.config));
+  }, [stack, draft.fee, draft.slippage, draft.size]);
+
   // The report chart lives in the results section's own container — its own
   // canvas, never the replay chart's — and remounts per run so each report
   // opens with a fresh time scale.
@@ -234,27 +262,25 @@ function App() {
   };
 
   const runBacktest = () => {
-    if (!stack) return;
-    const result = runEmaCrossBacktest(stack.candles, {
-      startingCapital: STARTING_CAPITAL,
-      // Same per-fill config as the replay stack's ExecutionEngine: the UI
-      // has no fee/slippage inputs, and a report must not invent numbers.
-      feePerUnit: 0,
-      slippagePerUnit: 0
-    });
+    if (!stack || trade.config === null) return;
+    const result = runEmaCrossBacktest(stack.candles, toBacktestConfig(trade.config, STARTING_CAPITAL));
     setBacktest({ result, candles: stack.candles, symbol, timeframe });
   };
 
+  const updateDraft = (field: TradeConfigField, value: string) => {
+    setDraft(previous => ({ ...previous, [field]: value }));
+  };
+
   const submitIntent = (side: "buy" | "sell") => {
-    if (!stack || !portfolioState || portfolioState.position !== null) return;
+    if (!stack || !portfolioState || portfolioState.position !== null || trade.config === null) return;
     const id = stack.execution.nextOrderId("manual");
-    stack.execution.submit({ id, side, quantity: 1, fillMode: "close" }, stack.engine.getState().index);
+    stack.execution.submit({ id, side, quantity: trade.config.size, fillMode: "close" }, stack.engine.getState().index);
     syncFromMarket(stack.execution, stack.portfolio, stack.engine.getState());
     setPortfolioState(stack.portfolio.getState());
   };
 
   const closePosition = () => {
-    if (!stack || !portfolioState) return;
+    if (!stack || !portfolioState || trade.config === null) return;
     const position = portfolioState.position;
     if (position === null) return;
     const id = stack.execution.nextOrderId("manual");
@@ -290,7 +316,16 @@ function App() {
         <div ref={chartRef} className="chart" />
         {!loaded && <div className="chart-placeholder">{placeholder}</div>}
       </section>
-      <ResultsPanel view={backtest} loaded={loaded} onRun={runBacktest} chartRef={resultsChartRef} />
+      <ResultsPanel
+        view={backtest}
+        loaded={loaded}
+        onRun={runBacktest}
+        chartRef={resultsChartRef}
+        draft={draft}
+        configErrors={trade.errors}
+        configValid={tradeValid}
+        onDraftChange={updateDraft}
+      />
       <aside className="data-panel">
         <h2>Data Manager</h2>
         <dl>
@@ -309,9 +344,10 @@ function App() {
       <button onClick={reset} disabled={!loaded}>↺ Reset</button>
       <button onClick={togglePlaying} disabled={!loaded}>{playing ? "Pause" : "Play"}</button>
       <button onClick={() => stack?.replay.step()} disabled={!loaded}>Step</button>
-      <button onClick={() => submitIntent("buy")} disabled={!loaded || position !== null}>Buy</button>
-      <button onClick={() => submitIntent("sell")} disabled={!loaded || position !== null}>Sell</button>
-      <button onClick={closePosition} disabled={!loaded || position === null}>Close</button>
+      <button onClick={() => submitIntent("buy")} disabled={!loaded || !tradeValid || position !== null}>Buy</button>
+      <button onClick={() => submitIntent("sell")} disabled={!loaded || !tradeValid || position !== null}>Sell</button>
+      <button onClick={closePosition} disabled={!loaded || !tradeValid || position === null}>Close</button>
+      <ConfigInputs draft={draft} errors={trade.errors} onChange={updateDraft} />
       <div className="speeds">{([1, 2, 5, 10] as const).map(s => <button className={speed === s ? "active" : ""} key={s} onClick={() => setSpeed(s)}>{s}x</button>)}</div>
       <div className="time">{state ? dateLabel(state.candle.timestamp * 1000) : "—"}</div>
       <div className="time">{portfolioLabel(stack, state, portfolioState)}</div>

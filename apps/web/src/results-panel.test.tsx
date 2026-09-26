@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Fill } from "@trading-research/shared";
 import { FillTable, ResultsPanel, type BacktestView } from "./results-panel";
+import { DEFAULT_TRADE_DRAFT, type TradeConfigDraft, type TradeConfigField } from "./trade-config";
 
 function fill(overrides: Partial<Fill>): Fill {
   return {
@@ -38,9 +39,21 @@ function view(fills: Fill[], overrides: Partial<BacktestView["result"]> = {}): B
 }
 
 describe("ResultsPanel", () => {
+  function configProps(
+    overrides: { draft?: TradeConfigDraft; configErrors?: string[]; configValid?: boolean } = {}
+  ) {
+    return {
+      draft: DEFAULT_TRADE_DRAFT,
+      configErrors: [] as string[],
+      configValid: true,
+      onDraftChange: (() => {}) as (field: TradeConfigField, value: string) => void,
+      ...overrides
+    };
+  }
+
   it("shows the no-run state with a run button, no stats and no table", () => {
     const markup = renderToStaticMarkup(
-      <ResultsPanel view={null} loaded={false} onRun={() => {}} />
+      <ResultsPanel view={null} loaded={false} onRun={() => {}} {...configProps()} />
     );
     expect(markup).toContain('aria-label="Backtest results"');
     expect(markup).toContain("No backtest run yet");
@@ -51,14 +64,45 @@ describe("ResultsPanel", () => {
   });
 
   it("enables the run button when a dataset is loaded", () => {
-    const markup = renderToStaticMarkup(<ResultsPanel view={null} loaded onRun={() => {}} />);
+    const markup = renderToStaticMarkup(
+      <ResultsPanel view={null} loaded onRun={() => {}} {...configProps()} />
+    );
     expect(markup).toContain("Run backtest");
     expect(markup).not.toContain("disabled");
   });
 
+  it("disables Run and shows the error when the config is invalid", () => {
+    const markup = renderToStaticMarkup(
+      <ResultsPanel
+        view={null}
+        loaded
+        onRun={() => {}}
+        {...configProps({
+          draft: { fee: "-1", slippage: "0", size: "0.01" },
+          configErrors: ["Fee must be a finite number >= 0"],
+          configValid: false
+        })}
+      />
+    );
+    expect(markup).toContain("disabled");
+    expect(markup).toContain('role="alert"');
+    expect(markup).toContain("Fee must be a finite number &gt;= 0");
+    expect(markup).toContain('value="-1"');
+  });
+
+  it("renders the config inputs with the current values", () => {
+    const markup = renderToStaticMarkup(
+      <ResultsPanel view={view([])} loaded onRun={() => {}} {...configProps()} />
+    );
+    expect(markup).toContain('aria-label="Fee per unit"');
+    expect(markup).toContain('aria-label="Slippage per unit"');
+    expect(markup).toContain('aria-label="Position size"');
+    expect(markup).toContain('value="0.01"');
+  });
+
   it("renders an explicit zero-trade state after a run with no fills", () => {
     const markup = renderToStaticMarkup(
-      <ResultsPanel view={view([])} loaded onRun={() => {}} />
+      <ResultsPanel view={view([])} loaded onRun={() => {}} {...configProps()} />
     );
     expect(markup).toContain("No trades in this run.");
     expect(markup).toContain("<dd>10000.00</dd>");
@@ -80,6 +124,7 @@ describe("ResultsPanel", () => {
         view={view(fills, { finalEquity: 10005.5, realizedPnl: 10, feesPaid: 3, maxDrawdown: 12.34 })}
         loaded
         onRun={() => {}}
+        {...configProps()}
       />
     );
 

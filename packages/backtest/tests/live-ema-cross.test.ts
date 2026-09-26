@@ -36,7 +36,8 @@ describe.runIf(baseUrl)("EMA cross backtest over BTCUSDT served by the data serv
     const driver = new BacktestDriver(candles, {
       startingCapital: 10_000,
       feePerUnit: 5,
-      slippagePerUnit: 2
+      slippagePerUnit: 2,
+      size: 0.01
     });
     const strategy = new EmaCrossStrategy({ quantity: 0.01 });
     const first = driver.run(strategy);

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { BacktestDriver } from "@trading-research/backtest";
 import type { Candle } from "@trading-research/shared";
+import { EmaCrossStrategy } from "@trading-research/strategy";
 import { analyzeFills } from "./fill-analysis";
 import { runEmaCrossBacktest } from "./run-backtest";
 
@@ -46,7 +48,8 @@ describe("runEmaCrossBacktest", () => {
     const result = runEmaCrossBacktest(candles, {
       startingCapital: STARTING_CAPITAL,
       feePerUnit: 0,
-      slippagePerUnit: 0
+      slippagePerUnit: 0,
+      size: 0.01
     });
 
     expect(result.fills).toHaveLength(2);
@@ -65,7 +68,8 @@ describe("runEmaCrossBacktest", () => {
     const result = runEmaCrossBacktest(candles, {
       startingCapital: STARTING_CAPITAL,
       feePerUnit: 0,
-      slippagePerUnit: 0
+      slippagePerUnit: 0,
+      size: 0.01
     });
 
     const realizedFromFills = analyzeFills(result.fills).rows.reduce((sum, row) => sum + row.realizedPnl, 0);
@@ -79,7 +83,8 @@ describe("runEmaCrossBacktest", () => {
     const result = runEmaCrossBacktest(candles, {
       startingCapital: STARTING_CAPITAL,
       feePerUnit: 5,
-      slippagePerUnit: 0
+      slippagePerUnit: 0,
+      size: 0.01
     });
 
     expect(result.fills).toHaveLength(2);
@@ -89,7 +94,7 @@ describe("runEmaCrossBacktest", () => {
 
   it("produces identical results when run twice on the same candles", () => {
     const candles = crossyCandles();
-    const config = { startingCapital: STARTING_CAPITAL, feePerUnit: 2, slippagePerUnit: 1 };
+    const config = { startingCapital: STARTING_CAPITAL, feePerUnit: 2, slippagePerUnit: 1, size: 0.01 };
     expect(runEmaCrossBacktest(candles, config)).toEqual(runEmaCrossBacktest(candles, config));
   });
 
@@ -97,11 +102,61 @@ describe("runEmaCrossBacktest", () => {
     const result = runEmaCrossBacktest(neverCrossingCandles(), {
       startingCapital: STARTING_CAPITAL,
       feePerUnit: 0,
-      slippagePerUnit: 0
+      slippagePerUnit: 0,
+      size: 0.01
     });
     expect(result.fills).toEqual([]);
     expect(result.equityCurve).toHaveLength(30);
     expect(result.finalEquity).toBe(STARTING_CAPITAL);
     expect(analyzeFills(result.fills).winRate).toBeNull();
+  });
+
+  it("is byte-identical to the previous hardcoded wiring under the default config", () => {
+    // The old path built EmaCrossStrategy with quantity 0.01 directly; the
+    // new path maps config.size to the same quantity. Same inputs must give
+    // the same result down to the last decimal — this is the proof the
+    // change is additive, not a silent behavior shift on the default path.
+    const candles = crossyCandles();
+    const viaConfig = runEmaCrossBacktest(candles, {
+      startingCapital: STARTING_CAPITAL,
+      feePerUnit: 0,
+      slippagePerUnit: 0,
+      size: 0.01
+    });
+    const direct = new BacktestDriver(
+      candles,
+      { startingCapital: STARTING_CAPITAL, feePerUnit: 0, slippagePerUnit: 0, size: 0.01 }
+    ).run(new EmaCrossStrategy({ quantity: 0.01 }));
+    expect(viaConfig).toEqual(direct);
+  });
+
+  it("changes fills, fees, and prices when fee/slippage/size change (before/after)", () => {
+    const candles = crossyCandles();
+    const flat = runEmaCrossBacktest(candles, {
+      startingCapital: STARTING_CAPITAL,
+      feePerUnit: 0,
+      slippagePerUnit: 0,
+      size: 0.01
+    });
+    const rich = runEmaCrossBacktest(candles, {
+      startingCapital: STARTING_CAPITAL,
+      feePerUnit: 5,
+      slippagePerUnit: 2,
+      size: 0.02
+    });
+    expect(flat.fills).toHaveLength(2);
+    expect(rich.fills).toHaveLength(2);
+    // Size flows into the strategy quantity: both fills double.
+    expect(flat.fills.map(f => f.quantity)).toEqual([0.01, 0.01]);
+    expect(rich.fills.map(f => f.quantity)).toEqual([0.02, 0.02]);
+    // Same signal bars, so the price gap is exactly the slippage: the buy
+    // shifts up, the sell shifts down.
+    expect(rich.fills[0].price - flat.fills[0].price).toBeCloseTo(2, 10);
+    expect(rich.fills[1].price - flat.fills[1].price).toBeCloseTo(-2, 10);
+    expect(flat.feesPaid).toBe(0);
+    expect(rich.fills.map(f => f.fee)).toEqual([0.1, 0.1]);
+    expect(rich.feesPaid).toBeCloseTo(0.2, 10);
+    expect(rich.realizedPnl).not.toBeCloseTo(flat.realizedPnl, 10);
+    expect(rich.finalEquity).not.toBe(flat.finalEquity);
   });
 });

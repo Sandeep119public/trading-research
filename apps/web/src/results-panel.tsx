@@ -2,6 +2,8 @@ import { useState, type Ref } from "react";
 import type { BacktestResult } from "@trading-research/backtest";
 import type { Candle } from "@trading-research/shared";
 import { analyzeFills, sortFills, type FillRow, type FillSortKey, type SortDirection } from "./fill-analysis";
+import { ConfigInputs } from "./config-inputs";
+import type { TradeConfigDraft, TradeConfigField } from "./trade-config";
 
 export interface BacktestView {
   result: BacktestResult;
@@ -93,12 +95,20 @@ export function ResultsPanel({
   view,
   loaded,
   onRun,
-  chartRef
+  chartRef,
+  draft,
+  configErrors,
+  configValid,
+  onDraftChange
 }: {
   view: BacktestView | null;
   loaded: boolean;
   onRun: () => void;
   chartRef?: Ref<HTMLDivElement>;
+  draft: TradeConfigDraft;
+  configErrors: string[];
+  configValid: boolean;
+  onDraftChange: (field: TradeConfigField, value: string) => void;
 }) {
   const stats = view === null ? null : analyzeFills(view.result.fills);
 
@@ -112,10 +122,11 @@ export function ResultsPanel({
             {formatFillTime(view.candles[0].timestamp)} → {formatFillTime(view.candles[view.candles.length - 1].timestamp)}
           </span>
         )}
-        <button type="button" className="results-run" disabled={!loaded} onClick={onRun}>
+        <button type="button" className="results-run" disabled={!loaded || !configValid} onClick={onRun}>
           Run backtest
         </button>
       </div>
+      <ConfigInputs draft={draft} errors={configErrors} onChange={onDraftChange} />
       {view === null || stats === null ? (
         <p className="results-hint">No backtest run yet — press Run backtest for a full-range EMA(20)/EMA(50) report.</p>
       ) : (

@@ -1,13 +1,19 @@
 import { CandleMarketEngine } from "@trading-research/engine";
-import { ExecutionEngine } from "@trading-research/execution";
+import { ExecutionEngine, type ExecutionConfig } from "@trading-research/execution";
 import { Portfolio } from "@trading-research/portfolio";
 import type { Strategy } from "@trading-research/strategy";
 import type { Candle, Fill } from "@trading-research/shared";
 
-export interface BacktestConfig {
+/**
+ * The user-set run config. Fee/slippage are ExecutionConfig's fields, not a
+ * parallel copy, so the two can never drift out of sync. size (base-asset
+ * units per entry/exit) is validated here at the config boundary but
+ * consumed by the run wiring — mapped to the strategy's quantity — never by
+ * the driver internals: BacktestDriver does not interpret strategy params.
+ */
+export interface BacktestConfig extends ExecutionConfig {
   startingCapital: number;
-  feePerUnit: number;
-  slippagePerUnit: number;
+  size: number;
 }
 
 export interface BacktestResult {
@@ -39,6 +45,7 @@ export class BacktestDriver {
     assertPositiveFinite(config.startingCapital, "startingCapital");
     assertNonNegativeFinite(config.feePerUnit, "feePerUnit");
     assertNonNegativeFinite(config.slippagePerUnit, "slippagePerUnit");
+    assertPositiveFinite(config.size, "size");
     this.candles = candles;
     this.config = { ...config };
     this.engine = new CandleMarketEngine(candles);

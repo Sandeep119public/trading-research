@@ -18,7 +18,7 @@ const candles: Candle[] = [
   { timestamp: 4, open: 100, high: 120, low: 80, close: 100, volume: 10 }
 ];
 
-const config = { startingCapital: 1000, feePerUnit: 1, slippagePerUnit: 0.5 };
+  const config = { startingCapital: 1000, feePerUnit: 1, slippagePerUnit: 0.5, size: 1 };
 
 function runReplay() {
   const engine = new CandleMarketEngine(candles);
