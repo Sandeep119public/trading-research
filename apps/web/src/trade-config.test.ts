@@ -66,6 +66,34 @@ describe("parseTradeConfig", () => {
       "Size must be a finite number > 0"
     ]);
   });
+
+  it("rejects extreme finite values that would overflow engine math", () => {
+    // 1e308 is finite and positive, so the generic checks pass it — yet
+    // size * feePerUnit or size * price against it yields Infinity, which
+    // reaches fills and equity as silent garbage. The bound must catch it.
+    expect(parseTradeConfig(draft({ fee: "1e308" }))).toEqual({
+      config: null,
+      errors: ["Fee must be <= 1000000000"]
+    });
+    expect(parseTradeConfig(draft({ slippage: "1e308" }))).toEqual({
+      config: null,
+      errors: ["Slippage must be <= 1000000000"]
+    });
+    expect(parseTradeConfig(draft({ size: "1e308" }))).toEqual({
+      config: null,
+      errors: ["Size must be <= 1000000000"]
+    });
+  });
+
+  it("accepts the bound itself and rejects just above it", () => {
+    expect(parseTradeConfig(draft({ fee: "1000000000" })).config).not.toBeNull();
+    expect(parseTradeConfig(draft({ fee: "1e9" })).config).not.toBeNull();
+    expect(parseTradeConfig(draft({ size: "999999999.5" })).config).not.toBeNull();
+    expect(parseTradeConfig(draft({ fee: "1000000001" }))).toEqual({
+      config: null,
+      errors: ["Fee must be <= 1000000000"]
+    });
+  });
 });
 
 describe("config derivation", () => {
