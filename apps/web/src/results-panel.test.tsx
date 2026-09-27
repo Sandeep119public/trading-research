@@ -40,12 +40,18 @@ function view(fills: Fill[], overrides: Partial<BacktestView["result"]> = {}): B
 
 describe("ResultsPanel", () => {
   function configProps(
-    overrides: { draft?: TradeConfigDraft; configErrors?: string[]; configValid?: boolean } = {}
+    overrides: {
+      draft?: TradeConfigDraft;
+      configErrors?: string[];
+      configValid?: boolean;
+      runError?: string | null;
+    } = {}
   ) {
     return {
       draft: DEFAULT_TRADE_DRAFT,
       configErrors: [] as string[],
       configValid: true,
+      runError: null as string | null,
       onDraftChange: (() => {}) as (field: TradeConfigField, value: string) => void,
       ...overrides
     };
@@ -88,6 +94,21 @@ describe("ResultsPanel", () => {
     expect(markup).toContain('role="alert"');
     expect(markup).toContain("Fee must be a finite number &gt;= 0");
     expect(markup).toContain('value="-1"');
+  });
+
+  it("shows a thrown run as a visible failure, never as an empty or no-run state", () => {
+    const markup = renderToStaticMarkup(
+      <ResultsPanel
+        view={null}
+        loaded
+        onRun={() => {}}
+        {...configProps({ runError: "size must be a finite number > 0" })}
+      />
+    );
+    expect(markup).toContain('role="alert"');
+    expect(markup).toContain("Backtest failed: size must be a finite number &gt; 0");
+    expect(markup).not.toContain("No backtest run yet");
+    expect(markup).not.toContain("No trades in this run");
   });
 
   it("renders the config inputs with the current values", () => {

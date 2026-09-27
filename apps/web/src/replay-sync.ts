@@ -12,3 +12,22 @@ export function syncFromMarket(execution: ExecutionEngine, portfolio: Portfolio,
   for (const fill of execution.process(state)) portfolio.applyFill(fill);
   portfolio.markToMarket(state.candle.close);
 }
+
+/**
+ * Subscription-facing wrapper: same drain, but an engine failure (e.g. a
+ * non-positive fill price) is returned as a message for the replay UI to
+ * surface and pause on, instead of escaping into a timer tick where it would
+ * surface as an unhandled error.
+ */
+export function syncFromMarketSafe(
+  execution: ExecutionEngine,
+  portfolio: Portfolio,
+  state: MarketState
+): string | null {
+  try {
+    syncFromMarket(execution, portfolio, state);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}

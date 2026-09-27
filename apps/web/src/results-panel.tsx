@@ -88,8 +88,10 @@ export function FillTable({ rows }: { rows: readonly FillRow[] }) {
  * the sortable fill table — presentation only. Every number except the fields
  * already on BacktestResult (finalEquity, realizedPnl, feesPaid, maxDrawdown)
  * is derived from Fill[] by analyzeFills, so the panel never asks the engine
- * for state it does not already own. Three states, all explicit: no run yet,
- * a run with no fills ("No trades in this run"), and a run with results.
+ * for state it does not already own. Four states, all explicit: a run that
+ * failed (runError), no run yet, a run with no fills ("No trades in this
+ * run"), and a run with results — a failure is never rendered as a no-run or
+ * empty state.
  */
 export function ResultsPanel({
   view,
@@ -99,6 +101,7 @@ export function ResultsPanel({
   draft,
   configErrors,
   configValid,
+  runError,
   onDraftChange
 }: {
   view: BacktestView | null;
@@ -108,6 +111,7 @@ export function ResultsPanel({
   draft: TradeConfigDraft;
   configErrors: string[];
   configValid: boolean;
+  runError: string | null;
   onDraftChange: (field: TradeConfigField, value: string) => void;
 }) {
   const stats = view === null ? null : analyzeFills(view.result.fills);
@@ -128,7 +132,11 @@ export function ResultsPanel({
       </div>
       <ConfigInputs draft={draft} errors={configErrors} onChange={onDraftChange} />
       {view === null || stats === null ? (
-        <p className="results-hint">No backtest run yet — press Run backtest for a full-range EMA(20)/EMA(50) report.</p>
+        runError !== null ? (
+          <p className="results-error" role="alert">Backtest failed: {runError}</p>
+        ) : (
+          <p className="results-hint">No backtest run yet — press Run backtest for a full-range EMA(20)/EMA(50) report.</p>
+        )
       ) : (
         <>
           <dl className="results-stats">
