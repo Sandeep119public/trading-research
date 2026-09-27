@@ -36,7 +36,6 @@ At replay time T, no component may expose data with timestamp > T. Loading a ful
 apps/web/
 packages/
   backtest/
-  chart/
   data/
   engine/
   execution/
@@ -66,6 +65,9 @@ interface ExecutionEngine {
   submit(order: OrderIntent, currentIndex: number): void
   process(market: MarketState): Fill[]
   updateConfig(config: ExecutionConfig): void
+  reset(): void
+  pendingCount(): number
+  hasOpenRisk(): boolean
 }
 ```
 
@@ -88,7 +90,7 @@ UI selection → BinanceDataManager.loadRange() → createHttpFetchKlines() → 
 - Reuses the shared `packages/data` pipeline instead of reimplementing it: `fetchKlinesRange()` (pagination guard, live-edge `dropFormingCandles()`, range selection), `normalizeBinanceKlines()` (validation), `expectedSeconds()` (coverage), `rangeIsClosed()` (cacheability), `MAX_PAGE_LIMIT`.
 - A candle that has not closed is never ingested, wherever the range came from: `fetchKlinesRange()` drops forming rows as of *now*, not as of the caller's `end`, so a request captured milliseconds ago still cannot smuggle in the current candle.
 - Coverage is checked for **every** range, live or not: `expectedSeconds()` clamps the demanded set to candles that could have closed, so a live edge is judged against closed data only, and a range whose candles have not closed yet demands its own opens instead of nothing. A hole in closed candles is a 422, never a short 200; a range with nothing closed is a 422, never an empty 200. The client's `loadRange()` applies the identical rule on the same helpers, so both sides agree on what "covered" means.
-- Caches only ranges made entirely of closed candles (`rangeIsClosed()`), in KV when bound and per-isolate memory otherwise: their answers can never change. A range that reaches the forming candle is refetched every time, because the closed set keeps growing.
+- Caches only ranges made entirely of closed candles (`rangeIsClosed()`), in KV when bound and per-isolate memory otherwise: their answers can never change. A range that reaches the forming candle is refetched every time, because the closed set keeps growing. Entries live 7 days (`CACHE_TTL_SECONDS`); the memory store's TTL expiry check is the only production wall-clock use outside the live-edge rules above.
 - Failure is always a non-200 with an `error` body: bad request 400, unknown path 404, non-GET 405, range that cannot be fully covered 422, upstream failure or invalid rows 502. A truncated 200 is never an outcome.
 - Explicitly out of scope, now and later: trading/simulation logic, auth, symbols/timeframes outside the universe above.
 
