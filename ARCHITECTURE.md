@@ -78,7 +78,7 @@ UI selection → BinanceDataManager.loadRange() → createHttpFetchKlines() → 
                     validated, frozen Candle[] → MarketEngine
 ```
 - The UI owns which symbol/timeframe is on screen (view selection) and builds a fresh `BinanceDataManager` per selection, so candles from two datasets can never mix. Selection change goes through the existing reset path: new stack, new chart, replay reset.
-- `BinanceDataManager` owns the candles and the load state the Data Manager panel reads: symbol, timeframe, loaded range, candle count, and status `idle | fetching | cached | error` (plus the error detail). `subscribe()` publishes transitions; `clear()` resets all of it.
+- `BinanceDataManager` owns the candles and the load state the Data Manager panel reads: symbol, timeframe, loaded range, candle count, and status `idle | fetching | ready | error` (plus the error detail). `ready` covers any locally available answer — freshly fetched or served from cache — because what matters to the panel is that the candles exist, not how they arrived. `subscribe()` publishes transitions; `clear()` resets all of it.
 - The transport is `createHttpFetchKlines()`, a drop-in `FetchKlinesFn`. MarketEngine, ReplayController, ExecutionEngine, and Portfolio are untouched by the swap.
 - Both HTTP hops have deadlines (`AbortSignal.timeout`): the UI→service call aborts after `timeoutMs` (default 30s) and the service→Binance call after its own (default 10s). A dead endpoint becomes a visible `… timed out after …` error, never a request that hangs and leaves the UI on "Loading…" forever.
 - Loading and failure are real states: a failed range renders an explicit error, never an empty chart.

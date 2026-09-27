@@ -31,7 +31,7 @@ describe.runIf(baseUrl)("EMA cross backtest over BTCUSDT served by the data serv
       endTime: Date.UTC(2024, 0, 31, 23, 59)
     });
     expect(candles.length).toBe(2976);
-    expect(manager.getState().status).toBe("cached");
+    expect(manager.getState().status).toBe("ready");
 
     const driver = new BacktestDriver(candles, {
       startingCapital: 10_000,

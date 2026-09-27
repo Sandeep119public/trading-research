@@ -188,6 +188,17 @@ describe("fail loud", () => {
     const result = await call(api, BASE);
     expect(result.status).toBe(502);
     expect(result.body.error).toMatch(/upstream klines failed: Binance responded 500/);
+    expect(result.body.error).not.toMatch(/invalid klines/);
+  });
+
+  it("labels malformed upstream rows as invalid rows, not as an exchange outage", async () => {
+    const fetchKlines = vi.fn<FetchKlinesFn>().mockResolvedValue([[T0, "100"] as unknown as BinanceKline]);
+    const { api } = apiWith(fetchKlines);
+    const result = await call(api, BASE);
+    expect(result.status).toBe(502);
+    expect(result.body.error).toMatch(/^invalid klines: /);
+    expect(result.body.error).toMatch(/Malformed/);
+    expect(result.body.error).not.toMatch(/upstream/);
   });
 
   it("answers 502 and caches nothing when upstream rows are invalid", async () => {

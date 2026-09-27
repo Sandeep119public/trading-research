@@ -131,7 +131,7 @@ describe("BinanceDataManager over the HTTP transport", () => {
     expect(manager.getState()).toMatchObject({
       symbol: "BTCUSDT",
       timeframe: "1m",
-      status: "cached",
+      status: "ready",
       error: null,
       loadedRange: range,
       candleCount: 3
@@ -201,9 +201,9 @@ describe("BinanceDataManager over the HTTP transport", () => {
 
     const candles = await manager.loadRange({ startTime: T0, endTime: T0 + 2 * MIN });
     expect(candles).toHaveLength(3);
-    expect(manager.getState().status).toBe("cached");
+    expect(manager.getState().status).toBe("ready");
     expect(manager.getState().error).toBeNull();
-    expect(statuses).toEqual(["fetching", "error", "fetching", "cached"]);
+    expect(statuses).toEqual(["fetching", "error", "fetching", "ready"]);
     unsubscribe();
   });
 });
