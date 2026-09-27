@@ -43,4 +43,26 @@ describe("Binance kline fetcher", () => {
       fetchKlines({ symbol: "BTCUSDT", interval: "1m", startTime: T0, endTime: T0 })
     ).rejects.toThrow(/not an array/);
   });
+
+  it("passes an abort signal so a hung upstream cannot stay pending forever", async () => {
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("[]", { status: 200 }));
+    const fetchKlines = createBinanceKlinesFetcher(fetchImpl);
+    await fetchKlines({ symbol: "BTCUSDT", interval: "1m", startTime: T0, endTime: T0 });
+    const init = fetchImpl.mock.calls[0][1];
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("aborts a hung upstream after the timeout and says so", async () => {
+    const fetchImpl = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error("expected an abort signal");
+      return new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason));
+      });
+    });
+    const fetchKlines = createBinanceKlinesFetcher(fetchImpl, 20);
+    await expect(
+      fetchKlines({ symbol: "BTCUSDT", interval: "1m", startTime: T0, endTime: T0 })
+    ).rejects.toThrow("Binance timed out after 20ms");
+  });
 });

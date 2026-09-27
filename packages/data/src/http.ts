@@ -5,10 +5,20 @@ export interface HttpTransportConfig {
   baseUrl: string;
   /** Injectable transport; defaults to the platform `fetch`. */
   fetchImpl?: typeof globalThis.fetch;
+  /** Abort a request that has not completed within this many milliseconds. */
+  timeoutMs?: number;
 }
+
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** Our own signal caused the rejection (AbortSignal.timeout, or the platform
+ * reporting the abort as a TimeoutError/AbortError). */
+function isTimeout(err: unknown): boolean {
+  return err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
 }
 
 async function errorDetail(response: Response): Promise<string> {
@@ -34,6 +44,7 @@ async function errorDetail(response: Response): Promise<string> {
 export function createHttpFetchKlines(config: HttpTransportConfig): FetchKlinesFn {
   if (!config.baseUrl) throw new Error("baseUrl is required");
   const baseUrl = config.baseUrl.replace(/\/+$/, "");
+  const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const fetchImpl: typeof globalThis.fetch =
     config.fetchImpl ?? ((input, init) => globalThis.fetch(input, init));
 
@@ -47,10 +58,14 @@ export function createHttpFetchKlines(config: HttpTransportConfig): FetchKlinesF
     if (params.limit !== undefined) query.set("limit", String(params.limit));
     const url = `${baseUrl}/klines?${query.toString()}`;
 
+    // The abort signal covers the whole request (connect, headers, and body),
+    // so a dead service becomes a visible error instead of a permanent
+    // "Loading…" state.
     let response: Response;
     try {
-      response = await fetchImpl(url);
+      response = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) });
     } catch (err) {
+      if (isTimeout(err)) throw new Error(`Data service timed out after ${timeoutMs}ms`);
       throw new Error(`Data service unreachable: ${message(err)}`);
     }
     if (!response.ok) {
@@ -61,6 +76,7 @@ export function createHttpFetchKlines(config: HttpTransportConfig): FetchKlinesF
     try {
       payload = await response.json();
     } catch (err) {
+      if (isTimeout(err)) throw new Error(`Data service timed out after ${timeoutMs}ms`);
       throw new Error(`Data service returned a body that is not JSON: ${message(err)}`);
     }
     if (!Array.isArray(payload)) {

@@ -83,6 +83,39 @@ describe("HTTP kline transport", () => {
   });
 });
 
+describe("HTTP transport timeouts", () => {
+  it("passes an abort signal so a hung request cannot stay pending forever", async () => {
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => jsonResponse(rows));
+    await serviceTransport(fetchImpl)({ symbol: "BTCUSDT", interval: "1m", startTime: T0, endTime: T0 });
+    const init = fetchImpl.mock.calls[0][1];
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("reports an aborted request as a timeout instead of a generic failure", async () => {
+    const fetchImpl = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error("expected an abort signal");
+      return new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason));
+      });
+    });
+    const transport = createHttpFetchKlines({ baseUrl: SERVICE, fetchImpl, timeoutMs: 20 });
+    await expect(
+      transport({ symbol: "BTCUSDT", interval: "1m", startTime: T0, endTime: T0 })
+    ).rejects.toThrow("Data service timed out after 20ms");
+  });
+
+  it("maps a platform TimeoutError to the timeout message with the configured budget", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new DOMException("The operation timed out.", "TimeoutError");
+    });
+    const transport = createHttpFetchKlines({ baseUrl: SERVICE, fetchImpl, timeoutMs: 5000 });
+    await expect(
+      transport({ symbol: "BTCUSDT", interval: "1m", startTime: T0, endTime: T0 })
+    ).rejects.toThrow("Data service timed out after 5000ms");
+  });
+});
+
 describe("BinanceDataManager over the HTTP transport", () => {
   it("keeps the loadRange contract and serves the repeat load without a second request", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse(rows));
