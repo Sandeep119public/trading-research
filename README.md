@@ -17,7 +17,7 @@ The current foundation is implemented and verified in local development and GitH
 - Portfolio with netting, realized/unrealized P&L, fees, and equity
 - BacktestDriver reusing the same MarketEngine, ExecutionEngine, and Portfolio
 - `EmaCrossStrategy`, an EMA(20)/EMA(50) crossover on the Strategy contract: long-only, no lookahead, at most one signal per bar
-- backtest results panel: summary stats (final equity, realized P&L, max drawdown, fees, win rate, trades, fills), the equity curve on its own chart, and a sortable fill table — with an explicit "No trades in this run" state
+- backtest results panel: summary stats (final equity, realized P&L, max drawdown, fees, win rate, profit factor, trades, fills), the equity curve on its own chart, and a sortable fill table — with an explicit "No trades in this run" state
 - fee/slippage/size configuration shared by replay and backtest from one session config: plain number inputs beside both control groups, validated, zero-cost defaults preserved
 - deterministic engine, strategy, replay, execution, portfolio, backtest, and data tests
 - Lightweight Charts web UI
@@ -56,7 +56,7 @@ DATA_API_URL=http://127.0.0.1:8787 npm test --workspace @trading-research/backte
 - Replay start-date selection (in V1 scope) — replay currently opens at the oldest candle of the loaded lookback range.
 - Clicking a fill to jump the chart to that fill's time — the fill table only sorts and displays.
 - Strategy choice in the UI - the panel runs the EMA(20)/EMA(50) sample; fee, slippage, and size are configurable.
-- Profit factor and other derived report metrics beyond win rate/trade count.
+- More derived report metrics (Sharpe, Sortino, expectancy) beyond win rate, trade count, and profit factor.
 - Exportable reports and side-by-side run comparison.
 
 ## Development
