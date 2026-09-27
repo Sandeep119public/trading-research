@@ -292,7 +292,7 @@ describe("BinanceDataManager", () => {
 });
 
 describe("BinanceDataManager state", () => {
-  it("starts idle and reports cached only once candles exist", async () => {
+  it("starts idle and reports ready only once candles exist", async () => {
     const manager = new BinanceDataManager({
       symbol: "BTCUSDT",
       timeframe: "1m",
@@ -307,7 +307,7 @@ describe("BinanceDataManager state", () => {
       candleCount: 0
     });
     await manager.loadRange({ startTime: T0, endTime: T0 + 2 * MIN });
-    expect(manager.getState()).toMatchObject({ status: "cached", candleCount: 3 });
+    expect(manager.getState()).toMatchObject({ status: "ready", candleCount: 3 });
   });
 
   it("notifies subscribers with every status transition of a failed load", async () => {
@@ -325,14 +325,14 @@ describe("BinanceDataManager state", () => {
     expect(seen).toHaveLength(2);
   });
 
-  it("reports a cache-hit load as cached without touching the transport", async () => {
+  it("reports a cache-hit load as ready without touching the transport", async () => {
     const fetch = vi.fn(async () => rows);
     const manager = new BinanceDataManager({ symbol: "BTCUSDT", timeframe: "1m", fetchKlines: fetch as never });
     await manager.loadRange({ startTime: T0, endTime: T0 + 2 * MIN });
     const seen: string[] = [];
     manager.subscribe(state => seen.push(state.status));
     await manager.loadRange({ startTime: T0, endTime: T0 + 2 * MIN });
-    expect(seen).toEqual(["fetching", "cached"]);
+    expect(seen).toEqual(["fetching", "ready"]);
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
@@ -340,7 +340,7 @@ describe("BinanceDataManager state", () => {
     const fetch = vi.fn(async () => rows);
     const manager = new BinanceDataManager({ symbol: "BTCUSDT", timeframe: "1m", fetchKlines: fetch as never });
     await manager.loadRange({ startTime: T0, endTime: T0 + 2 * MIN });
-    expect(manager.getState()).toMatchObject({ status: "cached", candleCount: 3 });
+    expect(manager.getState()).toMatchObject({ status: "ready", candleCount: 3 });
     manager.clear();
     expect(manager.getState()).toEqual({
       symbol: "BTCUSDT",
@@ -365,6 +365,6 @@ describe("BinanceDataManager state", () => {
     const snapshot = manager.getState();
     snapshot.loadedRange!.endTime = -1;
     snapshot.status = "error";
-    expect(manager.getState()).toMatchObject({ status: "cached", loadedRange: { startTime: T0, endTime: T0 + 2 * MIN } });
+    expect(manager.getState()).toMatchObject({ status: "ready", loadedRange: { startTime: T0, endTime: T0 + 2 * MIN } });
   });
 });

@@ -249,7 +249,7 @@ export class BinanceDataManager {
         }
         candles = this.sliceRange(range);
       }
-      this.publish({ status: "cached", error: null, loadedRange: { ...range }, candleCount: candles.length });
+      this.publish({ status: "ready", error: null, loadedRange: { ...range }, candleCount: candles.length });
       return candles;
     } catch (err) {
       this.publish({ status: "error", error: err instanceof Error ? err.message : String(err) });
@@ -422,14 +422,15 @@ function coversExpected(raw: readonly BinanceKline[], range: DataRange, timefram
   return expectedSeconds(range, timeframe).every(ts => have.has(ts));
 }
 
-export type DataManagerStatus = "idle" | "fetching" | "cached" | "error";
+export type DataManagerStatus = "idle" | "fetching" | "ready" | "error";
 
 /**
  * Everything the Data Manager panel needs, owned by the same module that owns
- * the candles. `status` is a real state, not a UI invention: "cached" means
- * candles for the last requested range are available locally, "fetching"
- * means a request is in flight, "error" means the last attempt failed and
- * `error` says why.
+ * the candles. `status` is a real state, not a UI invention: "ready" means
+ * candles for the last requested range are available locally (fetched from
+ * the network or served from cache — the panel should not distinguish how),
+ * "fetching" means a request is in flight, "error" means the last attempt
+ * failed and `error` says why.
  */
 export interface DataManagerState {
   symbol: string;

@@ -175,13 +175,19 @@ export function createDataApi(deps: DataApiDeps) {
     let rows: BinanceKline[];
     try {
       rows = await fetchKlinesRange({ symbol, timeframe, range, limit, fetchKlines: deps.fetchKlines });
+    } catch (err) {
+      return errorResponse(502, `upstream klines failed: ${message(err)}`);
+    }
+
+    try {
       // Normalization is validation: malformed rows must never be served or
-      // cached, so this runs before either.
+      // cached, so this runs before either. Its failure is not an exchange
+      // outage: the headline distinguishes invalid rows from a failed call.
       const candles = normalizeBinanceKlines(rows);
       assertCovered(range, timeframe, candles.map(c => c.timestamp));
     } catch (err) {
       if (err instanceof RangeNotCoveredError) return errorResponse(422, err.message);
-      return errorResponse(502, `upstream klines failed: ${message(err)}`);
+      return errorResponse(502, `invalid klines: ${message(err)}`);
     }
 
     if (cacheable) await writeCache(deps.cache, cacheKey, rows);

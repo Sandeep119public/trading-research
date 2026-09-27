@@ -10,7 +10,7 @@ The current foundation is implemented and verified in local development and GitH
 - `services/data-api`, a Cloudflare Worker serving historical OHLCV over HTTP: fetch, cache, fail loud
 - data-backed replay through the same MarketEngine used by backtesting
 - symbol (BTCUSDT, ETHUSDT, SOLUSDT) and timeframe (1m, 5m, 15m, 1h) selectors, both limited to what the service can actually serve
-- read-only Data Manager panel: symbol, timeframe, loaded range, candle count, and cached/fetching/error status
+- read-only Data Manager panel: symbol, timeframe, loaded range, candle count, and ready/fetching/error status
 - single-owner MarketEngine with the Future Data Rule
 - ReplayController with play/pause/step and 1x/2x/5x/10x speeds
 - ExecutionEngine with deterministic candle-mode fills, SL/TP, fees, and slippage
