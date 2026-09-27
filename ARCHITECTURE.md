@@ -43,6 +43,7 @@ packages/
   replay/
   strategy/
   shared/
+scripts/
 services/data-api/
 ```
 

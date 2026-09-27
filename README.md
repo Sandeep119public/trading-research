@@ -65,11 +65,15 @@ Requirements: Node.js 20.19+.
 
 ```bash
 npm install
-npm run dev
+npm run dev:all
 npm test
 npm run typecheck
 npm run build
 ```
+
+`npm run dev:all` runs `scripts/dev.mjs`, the one command for local development: it pre-flight-checks the Node version, install state, git tree (a dirty tree is surfaced as a possible second session per AGENTS.md), ports, and local config, then starts both services with labeled output, waits until each actually answers HTTP, and supervises them. If a port is taken by a process from this repository it offers kill/reuse/abort; a foreign owner is never touched. Ctrl+C stops both services and verifies both ports are released; if either service crashes, the other is shut down too. Use `npm run dev` to start only the web app (then start the data service separately as above).
+
+On Windows, if `npm` fails with "npm.ps1 cannot be loaded because running scripts is disabled", use `npm.cmd` instead (e.g. `npm.cmd run dev:all`), or run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.
 
 The repository pins npm 10.8.2 through `packageManager` and includes `package-lock.json`.
 
