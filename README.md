@@ -53,6 +53,7 @@ DATA_API_URL=http://127.0.0.1:8787 npm test --workspace @trading-research/backte
 
 ## Not yet built
 
+- Replay start-date selection (in V1 scope) — replay currently opens at the oldest candle of the loaded lookback range.
 - Clicking a fill to jump the chart to that fill's time — the fill table only sorts and displays.
 - Strategy choice in the UI - the panel runs the EMA(20)/EMA(50) sample; fee, slippage, and size are configurable.
 - Profit factor and other derived report metrics beyond win rate/trade count.
