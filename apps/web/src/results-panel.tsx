@@ -2,6 +2,8 @@ import { useState, type Ref } from "react";
 import type { BacktestResult } from "@trading-research/backtest";
 import type { Candle } from "@trading-research/shared";
 import { analyzeFills, sortFills, type FillRow, type FillSortKey, type SortDirection } from "./fill-analysis";
+import { formatFillTime, formatMoney, formatProfitFactor, formatWinRate } from "./report-format";
+import { exportReport } from "./report-export";
 import { ConfigInputs } from "./config-inputs";
 import type { TradeConfigDraft, TradeConfigField } from "./trade-config";
 
@@ -10,30 +12,6 @@ export interface BacktestView {
   candles: readonly Candle[];
   symbol: string;
   timeframe: string;
-}
-
-export function formatFillTime(timestampSeconds: number): string {
-  return new Date(timestampSeconds * 1000).toISOString().slice(0, 16).replace("T", " ");
-}
-
-function money(value: number): string {
-  return value.toFixed(2);
-}
-
-/**
- * Profit factor's representation contract, decided once here: null (nothing
- * to ratio) -> "—" like win rate's no-data dash; "infinite" (wins, no
- * losing trade) -> "∞"; a raw Infinity never reaches toFixed (it would
- * render the string "Infinity") and maps to the same symbols; an exact 0
- * renders as "0", not "0.00", so it cannot read as a rounded near-zero.
- * NaN falls through to toFixed and renders "NaN" — loud, never silent.
- */
-export function formatProfitFactor(value: number | "infinite" | null): string {
-  if (value === null) return "—";
-  if (value === "infinite") return "∞";
-  if (value === Infinity) return "∞";
-  if (value === -Infinity) return "-∞";
-  return value === 0 ? "0" : value.toFixed(2);
 }
 
 function signClass(value: number): string | undefined {
@@ -88,10 +66,10 @@ export function FillTable({ rows }: { rows: readonly FillRow[] }) {
           <tr key={`${row.fill.orderId}#${row.fill.timestamp}`}>
             <td>{formatFillTime(row.fill.timestamp)}</td>
             <td className={row.fill.side === "buy" ? "side-buy" : "side-sell"}>{row.fill.side}</td>
-            <td>{money(row.fill.price)}</td>
+            <td>{formatMoney(row.fill.price)}</td>
             <td>{row.fill.quantity}</td>
-            <td>{money(row.fill.fee)}</td>
-            <td className={signClass(row.realizedPnl)}>{money(row.realizedPnl)}</td>
+            <td>{formatMoney(row.fill.fee)}</td>
+            <td className={signClass(row.realizedPnl)}>{formatMoney(row.realizedPnl)}</td>
           </tr>
         ))}
       </tbody>
@@ -142,9 +120,16 @@ export function ResultsPanel({
             {formatFillTime(view.candles[0].timestamp)} → {formatFillTime(view.candles[view.candles.length - 1].timestamp)}
           </span>
         )}
-        <button type="button" className="results-run" disabled={!loaded || !configValid} onClick={onRun}>
-          Run backtest
-        </button>
+        <div className="results-actions">
+          {view !== null && (
+            <button type="button" className="results-export" onClick={() => exportReport(view)}>
+              Export CSV
+            </button>
+          )}
+          <button type="button" className="results-run" disabled={!loaded || !configValid} onClick={onRun}>
+            Run backtest
+          </button>
+        </div>
       </div>
       <ConfigInputs draft={draft} errors={configErrors} onChange={onDraftChange} />
       {view === null || stats === null ? (
@@ -158,23 +143,23 @@ export function ResultsPanel({
           <dl className="results-stats">
             <div>
               <dt>Final equity</dt>
-              <dd>{money(view.result.finalEquity)}</dd>
+              <dd>{formatMoney(view.result.finalEquity)}</dd>
             </div>
             <div>
               <dt>Realized P&L</dt>
-              <dd className={signClass(view.result.realizedPnl)}>{money(view.result.realizedPnl)}</dd>
+              <dd className={signClass(view.result.realizedPnl)}>{formatMoney(view.result.realizedPnl)}</dd>
             </div>
             <div>
               <dt>Max drawdown</dt>
-              <dd>{money(view.result.maxDrawdown)}</dd>
+              <dd>{formatMoney(view.result.maxDrawdown)}</dd>
             </div>
             <div>
               <dt>Fees paid</dt>
-              <dd>{money(view.result.feesPaid)}</dd>
+              <dd>{formatMoney(view.result.feesPaid)}</dd>
             </div>
             <div>
               <dt>Win rate</dt>
-              <dd>{stats.winRate === null ? "—" : `${(stats.winRate * 100).toFixed(1)}%`}</dd>
+              <dd>{formatWinRate(stats.winRate)}</dd>
             </div>
             <div>
               <dt>Profit factor</dt>

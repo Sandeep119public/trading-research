@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Fill } from "@trading-research/shared";
-import { FillTable, ResultsPanel, formatProfitFactor, type BacktestView } from "./results-panel";
+import { FillTable, ResultsPanel, type BacktestView } from "./results-panel";
 import { DEFAULT_TRADE_DRAFT, type TradeConfigDraft, type TradeConfigField } from "./trade-config";
 
 function fill(overrides: Partial<Fill>): Fill {
@@ -67,6 +67,7 @@ describe("ResultsPanel", () => {
     expect(markup).toContain("disabled");
     expect(markup).not.toContain("Final equity");
     expect(markup).not.toContain("<table");
+    expect(markup).not.toContain("Export CSV");
   });
 
   it("enables the run button when a dataset is loaded", () => {
@@ -109,6 +110,7 @@ describe("ResultsPanel", () => {
     expect(markup).toContain("Backtest failed: size must be a finite number &gt; 0");
     expect(markup).not.toContain("No backtest run yet");
     expect(markup).not.toContain("No trades in this run");
+    expect(markup).not.toContain("Export CSV");
   });
 
   it("renders the config inputs with the current values", () => {
@@ -206,6 +208,14 @@ describe("ResultsPanel", () => {
     expect(markup).toContain("<dd>0.0%</dd>");
   });
 
+  it("offers CSV export alongside the run button only once a report exists", () => {
+    const present = renderToStaticMarkup(
+      <ResultsPanel view={view([])} loaded onRun={() => {}} {...configProps()} />
+    );
+    expect(present).toContain('class="results-export"');
+    expect(present).toContain("Export CSV");
+  });
+
   it("shows profit factor as a dash for an empty run without inventing a second N/A state", () => {
     const markup = renderToStaticMarkup(
       <ResultsPanel view={view([])} loaded onRun={() => {}} {...configProps()} />
@@ -214,25 +224,6 @@ describe("ResultsPanel", () => {
     expect(markup).toContain("<dd>—</dd>");
     expect(markup).not.toContain("N/A");
     expect(markup).not.toContain("∞");
-  });
-});
-
-describe("formatProfitFactor", () => {
-  it("renders the defined representations for every case of the union", () => {
-    expect(formatProfitFactor(null)).toBe("—");
-    expect(formatProfitFactor("infinite")).toBe("∞");
-    expect(formatProfitFactor(0)).toBe("0");
-    expect(formatProfitFactor(1.5)).toBe("1.50");
-    expect(formatProfitFactor(2)).toBe("2.00");
-  });
-
-  it("never sends a non-finite number into number formatting", () => {
-    // Defensive: if a raw Infinity ever slipped past analyzeFills, toFixed
-    // would render the string "Infinity" into the panel. Non-finite values
-    // take the symbol branch instead; the sign is preserved rather than
-    // hidden, because a negative ratio would itself be a bug worth seeing.
-    expect(formatProfitFactor(Infinity)).toBe("∞");
-    expect(formatProfitFactor(-Infinity)).toBe("-∞");
   });
 });
 
