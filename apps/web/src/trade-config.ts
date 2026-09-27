@@ -27,6 +27,20 @@ export interface TradeConfigDraft {
 
 export const DEFAULT_TRADE_DRAFT: TradeConfigDraft = { fee: "0", slippage: "0", size: "0.01" };
 
+/**
+ * Upper bound for every user-entered field. Finite is not enough: 1e308 is
+ * finite and positive, yet size * feePerUnit or size * price against it
+ * overflows to Infinity, which reaches fills and equity as silent garbage
+ * (or as an uncaught RangeError mid-run). At 1e9 every downstream product
+ * stays at least ~190 orders of magnitude below IEEE-754 overflow for any
+ * price the served universe can quote, and no legitimate fee, slippage, or
+ * order size for BTCUSDT/ETHUSDT/SOLUSDT comes close — values beyond it are
+ * exponent typos, and this boundary rejects them instead of passing them to
+ * an engine. The engines' own finite checks remain as the last line of
+ * defense for non-UI callers; the UI never has to reach them.
+ */
+export const MAX_TRADE_CONFIG_VALUE = 1e9;
+
 export interface ParsedTradeConfig {
   /**
    * The validated config, or null when errors is non-empty. Invalid input
@@ -46,6 +60,10 @@ function parseField(raw: string, label: string, kind: "nonNegative" | "positive"
   const value = Number(raw);
   if (!Number.isFinite(value) || (kind === "positive" ? value <= 0 : value < 0)) {
     errors.push(`${label} must be a finite number ${kind === "positive" ? "> 0" : ">= 0"}`);
+    return null;
+  }
+  if (value > MAX_TRADE_CONFIG_VALUE) {
+    errors.push(`${label} must be <= ${MAX_TRADE_CONFIG_VALUE}`);
     return null;
   }
   return value;
