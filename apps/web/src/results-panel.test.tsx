@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Fill } from "@trading-research/shared";
-import { FillTable, ResultsPanel, type BacktestView } from "./results-panel";
+import { FillTable, ResultsPanel, formatProfitFactor, type BacktestView } from "./results-panel";
 import { DEFAULT_TRADE_DRAFT, type TradeConfigDraft, type TradeConfigField } from "./trade-config";
 
 function fill(overrides: Partial<Fill>): Fill {
@@ -172,6 +172,67 @@ describe("ResultsPanel", () => {
     const rows = [{ fill: fill({ side: "sell" as const }), realizedPnl: -5 }];
     const markup = renderToStaticMarkup(<FillTable rows={rows} />);
     expect(markup).toContain('<td class="neg">-5.00</td>');
+  });
+
+  it("renders profit factor as ∞ for a no-loss run, next to win rate and never as raw Infinity", () => {
+    // The B-2 bug shape: a raw Infinity reaching .toFixed() renders the string
+    // "Infinity". This run (one win, no losses) must produce "∞" instead.
+    const fills = [
+      fill({ orderId: "b1", side: "buy", price: 100, index: 0 }),
+      fill({ orderId: "s1", side: "sell", price: 110, index: 1 })
+    ];
+    const markup = renderToStaticMarkup(
+      <ResultsPanel view={view(fills)} loaded onRun={() => {}} {...configProps()} />
+    );
+    expect(markup).toContain("<dt>Profit factor</dt>");
+    expect(markup).toContain("<dd>∞</dd>");
+    expect(markup).not.toContain("Infinity");
+    const winRateAt = markup.indexOf("Win rate");
+    const profitFactorAt = markup.indexOf("Profit factor");
+    expect(winRateAt).toBeGreaterThan(-1);
+    expect(profitFactorAt).toBeGreaterThan(winRateAt);
+  });
+
+  it("renders profit factor 0 (not 0.00) when every completed trade lost", () => {
+    const fills = [
+      fill({ orderId: "b1", side: "buy", price: 100, index: 0 }),
+      fill({ orderId: "s1", side: "sell", price: 90, index: 1 })
+    ];
+    const markup = renderToStaticMarkup(
+      <ResultsPanel view={view(fills)} loaded onRun={() => {}} {...configProps()} />
+    );
+    expect(markup).toContain("<dt>Profit factor</dt>");
+    expect(markup).toContain("<dd>0</dd>");
+    expect(markup).toContain("<dd>0.0%</dd>");
+  });
+
+  it("shows profit factor as a dash for an empty run without inventing a second N/A state", () => {
+    const markup = renderToStaticMarkup(
+      <ResultsPanel view={view([])} loaded onRun={() => {}} {...configProps()} />
+    );
+    expect(markup).toContain("<dt>Profit factor</dt>");
+    expect(markup).toContain("<dd>—</dd>");
+    expect(markup).not.toContain("N/A");
+    expect(markup).not.toContain("∞");
+  });
+});
+
+describe("formatProfitFactor", () => {
+  it("renders the defined representations for every case of the union", () => {
+    expect(formatProfitFactor(null)).toBe("—");
+    expect(formatProfitFactor("infinite")).toBe("∞");
+    expect(formatProfitFactor(0)).toBe("0");
+    expect(formatProfitFactor(1.5)).toBe("1.50");
+    expect(formatProfitFactor(2)).toBe("2.00");
+  });
+
+  it("never sends a non-finite number into number formatting", () => {
+    // Defensive: if a raw Infinity ever slipped past analyzeFills, toFixed
+    // would render the string "Infinity" into the panel. Non-finite values
+    // take the symbol branch instead; the sign is preserved rather than
+    // hidden, because a negative ratio would itself be a bug worth seeing.
+    expect(formatProfitFactor(Infinity)).toBe("∞");
+    expect(formatProfitFactor(-Infinity)).toBe("-∞");
   });
 });
 

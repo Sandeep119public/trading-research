@@ -18,9 +18,20 @@ export interface FillStats {
   wins: number;
   losses: number;
   /** wins / trades, or null when no round trip completed (rendered as "—",
-   * never as a fabricated 0%). Breakeven trades count in trades but in
+   * never as a fabricated 0%. Breakeven trades count in trades but in
    * neither wins nor losses. */
   winRate: number | null;
+  /** gross profit / gross loss over the same completed round trips win rate
+   * counts (per-trade net after fees): gross profit is the sum of positive
+   * nets, gross loss the absolute sum of negative nets, breakeven in neither.
+   * - number: 0 when nothing won but something lost, otherwise the ratio.
+   * - "infinite": wins exist but no losing trade does (gross loss is 0).
+   *   The literal string, NOT raw Infinity, so no formatting path can render
+   *   the string "Infinity" (the B-2 bug shape); displayed as "∞".
+   * - null: no completed round trip, or all trades breakeven (0/0 — nothing
+   *   to ratio). Displayed as "—", the same dash win rate uses for "no data".
+   */
+  profitFactor: number | "infinite" | null;
 }
 
 export type FillSortKey = "time" | "side" | "price" | "quantity" | "fee" | "realized";
@@ -60,12 +71,19 @@ export function analyzeFills(fills: readonly Fill[]): FillStats {
   let trades = 0;
   let wins = 0;
   let losses = 0;
+  let grossProfit = 0;
+  let grossLoss = 0;
 
   const closeRoundTrip = () => {
     trades += 1;
     const net = tradePnl - tradeFees;
-    if (net > 0) wins += 1;
-    else if (net < 0) losses += 1;
+    if (net > 0) {
+      wins += 1;
+      grossProfit += net;
+    } else if (net < 0) {
+      losses += 1;
+      grossLoss -= net;
+    }
     tradePnl = 0;
     tradeFees = 0;
   };
@@ -93,12 +111,22 @@ export function analyzeFills(fills: readonly Fill[]): FillStats {
     rows.push({ fill, realizedPnl });
   }
 
+  const profitFactor: FillStats["profitFactor"] =
+    trades === 0
+      ? null
+      : grossLoss === 0
+        ? grossProfit > 0
+          ? "infinite"
+          : null
+        : grossProfit / grossLoss;
+
   return {
     rows,
     trades,
     wins,
     losses,
-    winRate: trades === 0 ? null : wins / trades
+    winRate: trades === 0 ? null : wins / trades,
+    profitFactor
   };
 }
 

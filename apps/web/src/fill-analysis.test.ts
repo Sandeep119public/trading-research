@@ -18,7 +18,7 @@ function fill(overrides: Partial<Fill>): Fill {
 
 describe("analyzeFills", () => {
   it("returns empty stats for no fills", () => {
-    expect(analyzeFills([])).toEqual({ rows: [], trades: 0, wins: 0, losses: 0, winRate: null });
+    expect(analyzeFills([])).toEqual({ rows: [], trades: 0, wins: 0, losses: 0, winRate: null, profitFactor: null });
   });
 
   it("keeps an opening fill unrealized and excludes it from win stats", () => {
@@ -124,6 +124,70 @@ describe("analyzeFills", () => {
     expect(stats.rows.map(r => r.realizedPnl)).toEqual([0, 10]);
     expect(stats.trades).toBe(1);
     expect(stats.wins).toBe(1);
+  });
+
+  it("computes profit factor from the same round trips as win rate: gross profit over gross loss", () => {
+    // Same four-trade shape as the win-rate test above: +10, -10, breakeven, +10.
+    // Breakeven contributes to neither gross total; fees are inside every net
+    // exactly as win rate counts them.
+    const fills = [
+      fill({ orderId: "1", side: "buy", price: 100 }),
+      fill({ orderId: "2", side: "sell", price: 110, index: 1 }),
+      fill({ orderId: "3", side: "buy", price: 110, index: 2 }),
+      fill({ orderId: "4", side: "sell", price: 100, index: 3 }),
+      fill({ orderId: "5", side: "buy", price: 50, index: 4 }),
+      fill({ orderId: "6", side: "sell", price: 50, index: 5 }),
+      fill({ orderId: "7", side: "buy", price: 60, index: 6 }),
+      fill({ orderId: "8", side: "sell", price: 70, index: 7 })
+    ];
+    const stats = analyzeFills(fills);
+    expect(stats.trades).toBe(4);
+    expect(stats.profitFactor).toBe(2);
+  });
+
+  it("marks a winning run with no losses as the literal \"infinite\", never as a raw number", () => {
+    // The zero-loss case must not be raw Infinity: raw numbers flow into
+    // .toFixed() and render as the string "Infinity" (the B-2 bug shape).
+    // The union type plus this assertion keep it on the string path.
+    const buy = fill({ side: "buy", price: 100 });
+    const sell = fill({ side: "sell", price: 110, index: 1 });
+    const stats = analyzeFills([buy, sell]);
+    expect(stats.wins).toBe(1);
+    expect(stats.losses).toBe(0);
+    expect(stats.profitFactor).toBe("infinite");
+    expect(typeof stats.profitFactor).not.toBe("number");
+  });
+
+  it("reports profit factor 0 when every completed round trip lost", () => {
+    const buy = fill({ side: "buy", price: 100 });
+    const sell = fill({ side: "sell", price: 90, index: 1 });
+    const stats = analyzeFills([buy, sell]);
+    expect(stats.losses).toBe(1);
+    expect(stats.wins).toBe(0);
+    expect(stats.profitFactor).toBe(0);
+    expect(typeof stats.profitFactor).toBe("number");
+  });
+
+  it("balances one winning and one losing round trip at exactly 1", () => {
+    const win = fill({ orderId: "w", side: "buy", price: 100 });
+    const winExit = fill({ orderId: "w2", side: "sell", price: 110, index: 1 });
+    const loss = fill({ orderId: "l", side: "buy", price: 110, index: 2 });
+    const lossExit = fill({ orderId: "l2", side: "sell", price: 100, index: 3 });
+    const stats = analyzeFills([win, winExit, loss, lossExit]);
+    expect(stats.trades).toBe(2);
+    expect(stats.profitFactor).toBe(1);
+  });
+
+  it("leaves profit factor null when nothing completed or there is nothing to ratio", () => {
+    // No completed round trip: same null -> \"-\" representation as win rate.
+    expect(analyzeFills([fill({})]).profitFactor).toBeNull();
+    // Trades completed but all breakeven: gross profit and gross loss are both
+    // 0 (0/0), so there is no ratio to report — still null, never NaN.
+    const breakeven = analyzeFills([fill({ price: 50 }), fill({ side: "sell", price: 50, index: 1 })]);
+    expect(breakeven.trades).toBe(1);
+    expect(breakeven.wins).toBe(0);
+    expect(breakeven.losses).toBe(0);
+    expect(breakeven.profitFactor).toBeNull();
   });
 });
 

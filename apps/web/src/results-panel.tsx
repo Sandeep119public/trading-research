@@ -20,6 +20,22 @@ function money(value: number): string {
   return value.toFixed(2);
 }
 
+/**
+ * Profit factor's representation contract, decided once here: null (nothing
+ * to ratio) -> "—" like win rate's no-data dash; "infinite" (wins, no
+ * losing trade) -> "∞"; a raw Infinity never reaches toFixed (it would
+ * render the string "Infinity") and maps to the same symbols; an exact 0
+ * renders as "0", not "0.00", so it cannot read as a rounded near-zero.
+ * NaN falls through to toFixed and renders "NaN" — loud, never silent.
+ */
+export function formatProfitFactor(value: number | "infinite" | null): string {
+  if (value === null) return "—";
+  if (value === "infinite") return "∞";
+  if (value === Infinity) return "∞";
+  if (value === -Infinity) return "-∞";
+  return value === 0 ? "0" : value.toFixed(2);
+}
+
 function signClass(value: number): string | undefined {
   return value < 0 ? "neg" : value > 0 ? "pos" : undefined;
 }
@@ -159,6 +175,10 @@ export function ResultsPanel({
             <div>
               <dt>Win rate</dt>
               <dd>{stats.winRate === null ? "—" : `${(stats.winRate * 100).toFixed(1)}%`}</dd>
+            </div>
+            <div>
+              <dt>Profit factor</dt>
+              <dd>{formatProfitFactor(stats.profitFactor)}</dd>
             </div>
             <div>
               <dt>Trades</dt>
