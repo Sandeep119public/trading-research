@@ -80,6 +80,7 @@ UI selection → BinanceDataManager.loadRange() → createHttpFetchKlines() → 
 - The UI owns which symbol/timeframe is on screen (view selection) and builds a fresh `BinanceDataManager` per selection, so candles from two datasets can never mix. Selection change goes through the existing reset path: new stack, new chart, replay reset.
 - `BinanceDataManager` owns the candles and the load state the Data Manager panel reads: symbol, timeframe, loaded range, candle count, and status `idle | fetching | cached | error` (plus the error detail). `subscribe()` publishes transitions; `clear()` resets all of it.
 - The transport is `createHttpFetchKlines()`, a drop-in `FetchKlinesFn`. MarketEngine, ReplayController, ExecutionEngine, and Portfolio are untouched by the swap.
+- Both HTTP hops have deadlines (`AbortSignal.timeout`): the UI→service call aborts after `timeoutMs` (default 30s) and the service→Binance call after its own (default 10s). A dead endpoint becomes a visible `… timed out after …` error, never a request that hangs and leaves the UI on "Loading…" forever.
 - Loading and failure are real states: a failed range renders an explicit error, never an empty chart.
 
 ## Data service contract (implemented)
@@ -91,7 +92,7 @@ UI selection → BinanceDataManager.loadRange() → createHttpFetchKlines() → 
 - A candle that has not closed is never ingested, wherever the range came from: `fetchKlinesRange()` drops forming rows as of *now*, not as of the caller's `end`, so a request captured milliseconds ago still cannot smuggle in the current candle.
 - Coverage is checked for **every** range, live or not: `expectedSeconds()` clamps the demanded set to candles that could have closed, so a live edge is judged against closed data only, and a range whose candles have not closed yet demands its own opens instead of nothing. A hole in closed candles is a 422, never a short 200; a range with nothing closed is a 422, never an empty 200. The client's `loadRange()` applies the identical rule on the same helpers, so both sides agree on what "covered" means.
 - Caches only ranges made entirely of closed candles (`rangeIsClosed()`), in KV when bound and per-isolate memory otherwise: their answers can never change. A range that reaches the forming candle is refetched every time, because the closed set keeps growing. Entries live 7 days (`CACHE_TTL_SECONDS`); the memory store's TTL expiry check is the only production wall-clock use outside the live-edge rules above.
-- Failure is always a non-200 with an `error` body: bad request 400, unknown path 404, non-GET 405, range that cannot be fully covered 422, upstream failure or invalid rows 502. A truncated 200 is never an outcome.
+- Failure is always a non-200 with an `error` body: bad request 400, unknown path 404, non-GET 405, range that cannot be fully covered 422, upstream failure or invalid rows 502 (including an upstream that timed out), unexpected internal failure 500 from the worker entry's catch-all (`unexpectedErrorResponse`). The `{error}` JSON contract holds for every failure — the platform's opaque error response is never the answer. A truncated 200 is never an outcome.
 - Explicitly out of scope, now and later: trading/simulation logic, auth, symbols/timeframes outside the universe above.
 
 ## V1 strategy constraint

@@ -112,6 +112,13 @@ function errorResponse(status: number, error: string, extraHeaders?: Record<stri
   return new Response(JSON.stringify({ error }), { status, headers: { ...JSON_HEADERS, ...extraHeaders } });
 }
 
+/** Last resort for failures outside the handler's own error paths (dependency
+ * construction, unexpected bugs): still the contract's non-200 JSON `{error}`
+ * body, never the platform's opaque non-JSON 500. */
+export function unexpectedErrorResponse(error: unknown): Response {
+  return errorResponse(500, `internal error: ${message(error)}`);
+}
+
 /**
  * The data service: one endpoint, one job — historical OHLCV over HTTP.
  *
