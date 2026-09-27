@@ -3,7 +3,7 @@ import { BacktestDriver } from "@trading-research/backtest";
 import type { Candle } from "@trading-research/shared";
 import { EmaCrossStrategy } from "@trading-research/strategy";
 import { analyzeFills } from "./fill-analysis";
-import { runEmaCrossBacktest } from "./run-backtest";
+import { runEmaCrossBacktest, tryRunEmaCrossBacktest } from "./run-backtest";
 
 const STARTING_CAPITAL = 10000;
 
@@ -158,5 +158,29 @@ describe("runEmaCrossBacktest", () => {
     expect(rich.feesPaid).toBeCloseTo(0.2, 10);
     expect(rich.realizedPnl).not.toBeCloseTo(flat.realizedPnl, 10);
     expect(rich.finalEquity).not.toBe(flat.finalEquity);
+  });
+});
+
+describe("tryRunEmaCrossBacktest", () => {
+  const config = { startingCapital: STARTING_CAPITAL, feePerUnit: 0, slippagePerUnit: 0, size: 0.01 };
+
+  it("wraps a successful run in an ok outcome", () => {
+    const outcome = tryRunEmaCrossBacktest(crossyCandles(), config);
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect(outcome.result.fills).toHaveLength(2);
+  });
+
+  it("turns an engine throw into a visible message instead of escaping the run action", () => {
+    expect(tryRunEmaCrossBacktest([], config)).toEqual({
+      ok: false,
+      message: "BacktestDriver requires at least one candle"
+    });
+  });
+
+  it("carries the config validation message through to the outcome", () => {
+    expect(tryRunEmaCrossBacktest(crossyCandles(), { ...config, size: 0 })).toEqual({
+      ok: false,
+      message: "size must be a finite number > 0"
+    });
   });
 });

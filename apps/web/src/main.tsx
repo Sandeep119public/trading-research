@@ -16,10 +16,13 @@ import { Portfolio, type PortfolioState } from "@trading-research/portfolio";
 import { ReplayController, type ReplaySpeed } from "@trading-research/replay";
 import type { Candle, MarketState } from "@trading-research/shared";
 import { toChartPoints } from "./chart-points";
-import { syncFromMarket } from "./replay-sync";
+import { ErrorBoundary } from "./error-boundary";
+import { executeManualIntent } from "./intents";
+import { syncFromMarketSafe } from "./replay-sync";
 import { mountResultsChart } from "./results-chart";
 import { ResultsPanel, type BacktestView } from "./results-panel";
-import { runEmaCrossBacktest } from "./run-backtest";
+import { tryRunEmaCrossBacktest } from "./run-backtest";
+import { RuntimeErrorBanner } from "./runtime-error";
 import { ConfigInputs } from "./config-inputs";
 import {
   DEFAULT_TRADE_CONFIG,
@@ -69,6 +72,10 @@ function dateLabel(ms: number): string {
   return new Date(ms).toISOString().slice(0, 16).replace("T", " ");
 }
 
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function portfolioLabel(stack: Stack | null, state: MarketState | null, portfolioState: PortfolioState | null): string {
   if (!stack || !state || !portfolioState) return "—";
   const position = portfolioState.position;
@@ -102,6 +109,11 @@ function App() {
   const [speed, setSpeed] = React.useState<ReplaySpeed>(1);
   const [state, setState] = React.useState<MarketState | null>(null);
   const [portfolioState, setPortfolioState] = React.useState<PortfolioState | null>(null);
+  // Surfaced engine failures: runError renders inside the results panel as
+  // "Backtest failed: …", runtimeError as the dismissible banner (replay stop
+  // reason, rejected order intent). Neither is ever swallowed silently.
+  const [runError, setRunError] = React.useState<string | null>(null);
+  const [runtimeError, setRuntimeError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -116,6 +128,8 @@ function App() {
     setState(null);
     setPortfolioState(null);
     setBacktest(null);
+    setRunError(null);
+    setRuntimeError(null);
     setPlaying(false);
 
     const manager = new BinanceDataManager({ symbol, timeframe, fetchKlines });
@@ -136,8 +150,14 @@ function App() {
         const portfolio = new Portfolio(STARTING_CAPITAL);
         nextReplay.subscribe((s: MarketState) => {
           setState(s);
-          syncFromMarket(execution, portfolio, s);
+          const failure = syncFromMarketSafe(execution, portfolio, s);
           setPortfolioState(portfolio.getState());
+          if (failure !== null) {
+            // A drain failure would otherwise repeat silently on every tick.
+            // Stop replay at the broken candle and say why; Reset recovers.
+            nextReplay.pause();
+            setRuntimeError(`Replay stopped: ${failure}`);
+          }
         });
         nextReplay.subscribePlaying(setPlaying);
         nextReplay.reset(0);
@@ -247,6 +267,9 @@ function App() {
 
   const reset = () => {
     if (!stack) return;
+    // A deterministic restart recovers from a paused-by-failure replay; the
+    // banner must not claim the fresh session is broken.
+    setRuntimeError(null);
     stack.execution.reset();
     stack.portfolio.reset(STARTING_CAPITAL);
     pendingTimeScaleReset.current = true;
@@ -263,8 +286,16 @@ function App() {
 
   const runBacktest = () => {
     if (!stack || trade.config === null) return;
-    const result = runEmaCrossBacktest(stack.candles, toBacktestConfig(trade.config, STARTING_CAPITAL));
-    setBacktest({ result, candles: stack.candles, symbol, timeframe });
+    const outcome = tryRunEmaCrossBacktest(stack.candles, toBacktestConfig(trade.config, STARTING_CAPITAL));
+    if (outcome.ok) {
+      setRunError(null);
+      setBacktest({ result: outcome.result, candles: stack.candles, symbol, timeframe });
+    } else {
+      // A failed run must never leave a stale report up or read as a
+      // successful empty one: clear the view and show the reason in place.
+      setBacktest(null);
+      setRunError(outcome.message);
+    }
   };
 
   const updateDraft = (field: TradeConfigField, value: string) => {
@@ -272,24 +303,31 @@ function App() {
   };
 
   const submitIntent = (side: "buy" | "sell") => {
-    if (!stack || !portfolioState || portfolioState.position !== null || trade.config === null) return;
-    const id = stack.execution.nextOrderId("manual");
-    stack.execution.submit({ id, side, quantity: trade.config.size, fillMode: "close" }, stack.engine.getState().index);
-    syncFromMarket(stack.execution, stack.portfolio, stack.engine.getState());
-    setPortfolioState(stack.portfolio.getState());
+    if (!stack || trade.config === null) return;
+    try {
+      executeManualIntent(stack.execution, stack.portfolio, stack.engine, {
+        kind: "open",
+        side,
+        quantity: trade.config.size
+      });
+    } catch (error) {
+      setRuntimeError(`Order failed: ${errorText(error)}`);
+    } finally {
+      // Always republish the live portfolio, so the footer can never keep
+      // showing a pre-intent snapshot after a rejected intent.
+      setPortfolioState(stack.portfolio.getState());
+    }
   };
 
   const closePosition = () => {
-    if (!stack || !portfolioState || trade.config === null) return;
-    const position = portfolioState.position;
-    if (position === null) return;
-    const id = stack.execution.nextOrderId("manual");
-    stack.execution.submit(
-      { id, side: position.side === "long" ? "sell" : "buy", quantity: position.quantity, fillMode: "close", reduceOnly: true },
-      stack.engine.getState().index
-    );
-    syncFromMarket(stack.execution, stack.portfolio, stack.engine.getState());
-    setPortfolioState(stack.portfolio.getState());
+    if (!stack || trade.config === null) return;
+    try {
+      executeManualIntent(stack.execution, stack.portfolio, stack.engine, { kind: "close" });
+    } catch (error) {
+      setRuntimeError(`Order failed: ${errorText(error)}`);
+    } finally {
+      setPortfolioState(stack.portfolio.getState());
+    }
   };
 
   const position = portfolioState?.position ?? null;
@@ -311,6 +349,11 @@ function App() {
       </div>
       <div className="symbol">{symbol} / {timeframe} · {rangeLabel}</div>
     </header>
+    <div className="runtime-error-slot">
+      {runtimeError !== null && (
+        <RuntimeErrorBanner message={runtimeError} onDismiss={() => setRuntimeError(null)} />
+      )}
+    </div>
     <main>
       <section className="chart-shell">
         <div ref={chartRef} className="chart" />
@@ -324,6 +367,7 @@ function App() {
         draft={draft}
         configErrors={trade.errors}
         configValid={tradeValid}
+        runError={runError}
         onDraftChange={updateDraft}
       />
       <aside className="data-panel">
@@ -355,4 +399,8 @@ function App() {
   </div>;
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);

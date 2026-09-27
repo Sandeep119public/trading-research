@@ -17,3 +17,19 @@ export function runEmaCrossBacktest(candles: readonly Candle[], config: Backtest
   const driver = new BacktestDriver(candles, config);
   return driver.run(new EmaCrossStrategy({ quantity: config.size }));
 }
+
+export type BacktestRunOutcome = { ok: true; result: BacktestResult } | { ok: false; message: string };
+
+/**
+ * The UI's run-action boundary: runEmaCrossBacktest with the engine's throw
+ * contract converted into a visible outcome, so a driver/config failure
+ * renders as "Backtest failed: …" instead of an unhandled exception — never
+ * as an empty report that could be misread as a real run.
+ */
+export function tryRunEmaCrossBacktest(candles: readonly Candle[], config: BacktestConfig): BacktestRunOutcome {
+  try {
+    return { ok: true, result: runEmaCrossBacktest(candles, config) };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error) };
+  }
+}
