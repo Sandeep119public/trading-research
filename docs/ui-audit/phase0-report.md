@@ -156,3 +156,53 @@ typecheck/test/build with shown output → PR → CI green on exact commit → m
 - F18: `data-copy.ts` splits the data layer's "Data service unreachable: <transport>" into a friendly
   headline (everywhere) + transport detail (Data Manager only). F19: Retry button in the chart placeholder
   re-runs the load effect via `reloadNonce`. F20: Run/footer gates take `loaded && status === "ready"`.
+
+### Phase 3 resolutions (`feature/ui-chart-results`)
+- F21: fixed earlier in PR #20 (`fix/ui-audit-bugs`, merged `fc6cb85`) — root causes recorded there.
+- F22: the equity chart's axis tag is pinned to the curve's FINAL value — `equityAxisTag(curve)` returns
+  the last point, which is `BacktestResult.finalEquity` (backtest-driver.test pins that equality), so the
+  tag and the FINAL EQUITY card can never disagree. The scroll-dependent last-value label and the
+  built-in price line are off (`lastValueVisible:false`, `priceLineVisible:false`); a dashed price line
+  titled `FINAL` carries the tag; the crosshair still labels hovered values (user directive, Addenda).
+  The browser probe caught a second-order case: after a jump scrolls the report, the local y-window can
+  auto-scale the final value off-screen and the tag vanishes with it — fixed by a full-curve
+  `autoscaleInfoProvider`, which also stops y from rescaling under the reader while panning x. Screenshot
+  `p3-report`: tag reads 9985.98 = card 9985.98.
+- F23: legend above the fills table (`jump-legend`, `jumpLegend()` in `jump-plan.ts`) decodes the row
+  colors — one entry per `JumpPlan`, each swatch reusing the exact row class it explains (value-selection
+  test: seek text /advance/i, view text /scroll/i+/only/i). Hover on a jump time is a block highlight,
+  not a bare underline. The jumped-to row keeps a highlight plus an amber left bar (`fill-current` via the
+  `activeTime` prop; exactly one such row). Both charts show a landing marker on the target candle
+  (`jumpMarker`: amber = advanced replay, white = scroll only). Red-first: `toFillMarkers` (shape/color
+  per side, snap to greatest candle ≤ fill, drop fills before the data, stable sort) and the legend value
+  selection — written before the modules existed (9 red tests), mutations caught afterwards (tag returns
+  curve[0] → 2 fail; binary-search boundary flipped → 2 fail; autoscale provider removed → 1 fail).
+- F24: verified in-browser by pixel-scanning the marker: a backward (scroll) jump puts the target candle
+  at the viewport centre (marker x=504.5 vs pane centre 594.0 of 1188 — 7.5% off, inside tolerance).
+  A forward (seek) jump is right-aligned BY CONSTRUCTION: `fastForwardTo` makes T the newest visible
+  candle and the Future Data Rule leaves no data to its right, so `centeredRange` clamps `to` to the last
+  candle. Not a library limitation — the marker on the candle carries the legibility, as the finding
+  anticipated. Documented in ARCHITECTURE.md.
+- F25: checked lc options first (AGENTS.md:21): `rightPriceScale.minimumWidth` (60 on both charts),
+  `timeScale.rightOffset: 4`, and per-series `priceScale().applyOptions({minimumWidth:44})` for the
+  volume pane (`ISeriesApi.priceScale()` — panes have no direct price-scale method). Probe: replay price
+  axis renders 70px; no clipped right-edge time ticks in any after-shot; the volume label renders whole
+  (53.6/110.3/186.94). The last-price tag renders on its own solid background over the scale and stays
+  legible in every after-shot (it occupies one tick slot; both numbers never render on top of each other
+  in the Phase 3 captures). The 390 caption fit check passes (geometry, probe).
+- F26/F30: `replayCaption` (`chart-captions.ts`) — "At start of data — press Play" at step 0, "End of
+  data" when paused at the end, null while playing or paused mid-session. Probe: all three states
+  asserted in the DOM + screenshots; the caption sits top-centre, clear of the footer and the logo.
+- F27: folded into F25 — the equity chart's y-range is now the full curve (see F22); the 2-tick first
+  range of 1m data is the data's own range and no artificial padding is added.
+- F28: attribution kept (license requires it), shrunk and softened in place — `.results-chart
+  #tv-attr-logo` 14x26 opacity .75; the id selector needs `!important` against the injected stylesheet.
+  Probe: computed height 14px, opacity 0.75, href intact.
+- F29: fill arrows land on the REPORT chart only (`toFillMarkers` through `reportMarkers` = arrows +
+  current jump marker, sorted; test pins that setting/clearing a jump marker can never drop the arrows).
+  Decision: the replay chart gets NO fill arrows — replay fills surface live through position, price-line,
+  and readout as they execute; surfacing historical fills on the replay canvas would require
+  `syncFromMarket` to expose fills, a contract change outside V1 polish scope (recorded in
+  ARCHITECTURE.md). Probe: green buy + red sell arrows pixel-verified on the report chart (31 hits each
+  in-window), zero green/red marker pixels on the replay chart (its candles use lc defaults, distinct
+  from the token colors).

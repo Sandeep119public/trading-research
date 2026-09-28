@@ -84,7 +84,9 @@ select{border:1px solid var(--border-strong);background:var(--btn-bg);color:var(
 .fills-table tr:last-child td{border-bottom:none}
 .fills-table tbody tr:hover td{background:var(--surface-hover)}
 .fill-jump{border:none;background:none;color:inherit;font:inherit;padding:0;cursor:pointer;text-align:left}
-.fill-jump:hover{background:none;text-decoration:underline}
+/* F23: block highlight, not a bare underline, so the affordance reads as
+   clickable across the whole cell. */
+.fill-jump:hover{background:var(--surface-hover);text-decoration:underline;text-underline-offset:2px}
 .fill-jump--seek{color:var(--warn-strong)}
 .side-buy{color:var(--success)}
 .side-sell{color:var(--danger)}
@@ -98,6 +100,30 @@ select{border:1px solid var(--border-strong);background:var(--btn-bg);color:var(
 .results-stats dd.pos,.fills-table td.pos{color:var(--success)}
 .fills-table td.side-buy{color:var(--success)}
 .fills-table td.side-sell{color:var(--danger)}
+
+/* F23: the legend decodes what a row click does — amber advances replay to
+   the fill, white only scrolls the charts. The swatch reuses each row's own
+   class, so the caption and the rows it explains cannot drift apart. Hover on
+   a jump time is a block highlight, not a bare underline, so the affordance
+   reads as clickable across the whole cell. The jumped-to row stays marked
+   (background + amber bar) while the landing is still in view. */
+.jump-legend{display:flex;flex-wrap:wrap;gap:6px 16px;padding:7px 0 4px;font-size:11px;color:var(--label)}
+.jump-legend-item{display:inline-flex;align-items:center;gap:6px}
+.jump-swatch{width:8px;height:8px;border-radius:50%;flex:none}
+.jump-swatch.fill-jump--seek{background:var(--warn-strong)}
+.jump-swatch.fill-jump--view{background:var(--text-2)}
+.fills-table tbody tr.fill-current td{background:var(--surface-hover);color:var(--text-2)}
+.fills-table tbody tr.fill-current td:first-child{box-shadow:inset 3px 0 0 var(--warn-strong)}
+
+/* F26/F30: a paused chart that has not started (or has finished) says so in
+   place, top-center — clear of the attribution logo at bottom-left. It never
+   covers the footer controls, so Replay and Play stay reachable. */
+.chart-caption{position:absolute;top:14px;left:50%;transform:translateX(-50%);padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-2);font-size:12px;pointer-events:none;white-space:nowrap;z-index:2}
+
+/* F28: the attribution logo is required, but its injected size dominates the
+   small report chart — shrink and soften it in place (id selector + the
+   injected stylesheet win on order, so !important is needed). */
+.results-chart #tv-attr-logo{height:14px!important;width:26px!important;opacity:.75}
 
 /* Session trade config: one input group, beside the Run control it gates. */
 .config-inputs{display:flex;align-items:center;gap:var(--gap);flex-wrap:wrap}

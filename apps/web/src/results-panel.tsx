@@ -4,8 +4,8 @@ import type { Candle } from "@trading-research/shared";
 import { analyzeFills, sortFills, type FillRow, type FillSortKey, type SortDirection } from "./fill-analysis";
 import { formatFillTime, formatMoney, formatProfitFactor, formatSignedMoney, formatWinRate, pnlSignClass } from "./report-format";
 import { exportReport } from "./report-export";
-import { planJump } from "./jump-plan";
 import { ConfigInputs } from "./config-inputs";
+import { jumpLegend, planJump } from "./jump-plan";
 import { configValidationMessages, type TradeConfigDraft, type TradeConfigField } from "./trade-config";
 
 export interface BacktestView {
@@ -33,16 +33,19 @@ const SEEK_TITLE = "Fast-forwards replay to this time — every candle in betwee
  * when the time is ahead of T (planJump decides, so the pre-click look —
  * `fill-jump--view` free scroll versus `fill-jump--seek` advancing the live
  * session — states exactly what the click will do). Without the callback the
- * cells stay plain text.
+ * cells stay plain text. `activeTime` marks the most recently jumped-to row
+ * so the landing stays visible while reading.
  */
 export function FillTable({
   rows,
   replayTime,
-  onJumpToTime
+  onJumpToTime,
+  activeTime = null
 }: {
   rows: readonly FillRow[];
   replayTime?: number | null;
   onJumpToTime?: (timestamp: number) => void;
+  activeTime?: number | null;
 }) {
   const [sort, setSort] = useState<{ key: FillSortKey; direction: SortDirection }>({
     key: "time",
@@ -82,7 +85,10 @@ export function FillTable({
           const plan = planJump(replayTime ?? null, row.fill.timestamp);
           const time = formatFillTime(row.fill.timestamp);
           return (
-            <tr key={`${row.fill.orderId}#${row.fill.timestamp}`}>
+            <tr
+              key={`${row.fill.orderId}#${row.fill.timestamp}`}
+              className={activeTime === row.fill.timestamp ? "fill-current" : undefined}
+            >
               <td>
                 {onJumpToTime === undefined ? (
                   time
@@ -138,7 +144,8 @@ export function ResultsPanel({
   onDraftChange,
   replayTime,
   onJumpToTime,
-  hasPosition = false
+  hasPosition = false,
+  activeTime = null
 }: {
   view: BacktestView | null;
   loaded: boolean;
@@ -152,6 +159,7 @@ export function ResultsPanel({
   replayTime?: number | null;
   onJumpToTime?: (timestamp: number) => void;
   hasPosition?: boolean;
+  activeTime?: number | null;
 }) {
   const stats = view === null ? null : analyzeFills(view.result.fills);
   const messages = configValidationMessages(configErrors, hasPosition);
@@ -226,9 +234,26 @@ export function ResultsPanel({
           {view.result.fills.length === 0 ? (
             <p className="results-empty">No trades in this run.</p>
           ) : (
-            <div className="results-table-wrap">
-              <FillTable rows={stats.rows} replayTime={replayTime} onJumpToTime={onJumpToTime} />
-            </div>
+            <>
+              {onJumpToTime !== undefined && (
+                <div className="jump-legend">
+                  {jumpLegend().map(entry => (
+                    <span className="jump-legend-item" key={entry.plan}>
+                      <span className={`jump-swatch ${entry.rowClass}`} aria-hidden="true" />
+                      {entry.text}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="results-table-wrap">
+                <FillTable
+                  rows={stats.rows}
+                  replayTime={replayTime}
+                  onJumpToTime={onJumpToTime}
+                  activeTime={activeTime}
+                />
+              </div>
+            </>
           )}
         </>
       )}

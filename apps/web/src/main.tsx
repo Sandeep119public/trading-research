@@ -1,6 +1,14 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { createChart, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
+import {
+  createChart,
+  CandlestickSeries,
+  HistogramSeries,
+  createSeriesMarkers,
+  type IChartApi,
+  type ISeriesApi,
+  type UTCTimestamp
+} from "lightweight-charts";
 import {
   BinanceDataManager,
   SUPPORTED_SYMBOLS,
@@ -17,11 +25,13 @@ import { ReplayController, type ReplaySpeed } from "@trading-research/replay";
 import type { Candle, MarketState } from "@trading-research/shared";
 import { toChartPoints } from "./chart-points";
 import { centeredRange, shouldFollowEngine } from "./chart-viewport";
+import { replayCaption } from "./chart-captions";
 import { dataErrorDetail, friendlyDataError } from "./data-copy";
 import { ErrorBoundary } from "./error-boundary";
 import { footerGates } from "./footer-gates";
+import { jumpMarker, type ChartMarker } from "./fill-markers";
 import { executeManualIntent } from "./intents";
-import { planJump } from "./jump-plan";
+import { planJump, type JumpPlan } from "./jump-plan";
 import { syncFromMarketSafe } from "./replay-sync";
 import { mountResultsChart } from "./results-chart";
 import { ResultsPanel, type BacktestView } from "./results-panel";
@@ -94,6 +104,14 @@ function App() {
   const volumeSeries = React.useRef<ISeriesApi<"Histogram"> | null>(null);
   const resultsChartRef = React.useRef<HTMLDivElement>(null);
   const resultsChartApi = React.useRef<IChartApi | null>(null);
+  // Jump-landing markers on both charts: the replay chart's marker plugin is
+  // created with its series (and re-applied after every data landing, since
+  // setData can repaint the series), the results chart's arrives with its
+  // mount. Both are setters so a stale chart can never be marked into.
+  const candleMarkers = React.useRef<((markers: readonly ChartMarker[]) => void) | null>(null);
+  const resultsJumpMarker = React.useRef<((marker: ChartMarker | null) => void) | null>(null);
+  /** The last fill-row jump: its marker and the current-row highlight. */
+  const [lastJump, setLastJump] = React.useState<{ time: number; plan: JumpPlan } | null>(null);
   const pendingTimeScaleReset = React.useRef(false);
   // A seek-jump's center target, held until the post-seek data lands (see the
   // data effect below): centering inside the click handler aims at a series
@@ -135,13 +153,17 @@ function App() {
     // A new selection means a new dataset: drop the previous stack so the
     // chart, replay, and portfolio can never show candles from two datasets.
     // The backtest report belongs to the previous dataset too, so it goes
-    // with them.
+    // with them — and so does any fill-row jump: a landing marker or a
+    // deferred centre aimed at the old candle grid must not survive into the
+    // new one.
     setStack(null);
     setState(null);
     setPortfolioState(null);
     setBacktest(null);
     setRunError(null);
     setRuntimeError(null);
+    setLastJump(null);
+    pendingCenter.current = null;
     setPlaying(false);
 
     const manager = new BinanceDataManager({ symbol, timeframe, fetchKlines });
@@ -194,8 +216,11 @@ function App() {
     const chart = createChart(chartRef.current, {
       layout: { background: { color: "#09090b" }, textColor: "#a1a1aa" },
       grid: { vertLines: { color: "#18181b" }, horzLines: { color: "#18181b" } },
-      rightPriceScale: { borderColor: "#27272a" },
-      timeScale: { borderColor: "#27272a", timeVisible: true }
+      // F25: reserve width for the widest price label and a few bars past the
+      // newest one, so the right-edge price and time labels are never clipped
+      // by the panel border.
+      rightPriceScale: { borderColor: "#27272a", minimumWidth: 60 },
+      timeScale: { borderColor: "#27272a", timeVisible: true, rightOffset: 4 }
     });
     const series = chart.addSeries(CandlestickSeries, {});
     // Volume gets its own pane: overlay scaleMargins are not honored for
@@ -204,6 +229,12 @@ function App() {
     const volumePane = chart.addPane();
     volumePane.setStretchFactor(0.18);
     const volume = volumePane.addSeries(HistogramSeries, { priceFormat: { type: "volume" } });
+    // F25: the volume axis label ("400") needs its own reserved width too.
+    volume.priceScale().applyOptions({ minimumWidth: 44 });
+    const markers = createSeriesMarkers(series, []);
+    candleMarkers.current = next => {
+      markers.setMarkers([...next]);
+    };
     chartApi.current = chart;
     candleSeries.current = series;
     volumeSeries.current = volume;
@@ -213,6 +244,7 @@ function App() {
     observer.observe(chartRef.current);
     return () => {
       observer.disconnect();
+      candleMarkers.current = null;
       chartApi.current = null;
       candleSeries.current = null;
       volumeSeries.current = null;
@@ -241,6 +273,11 @@ function App() {
         pendingCenter.current = null;
         centerTimeScale(chart, target, state.visibleCandles);
       }
+      // The jump marker is (re)applied after every landing: a seek's marker
+      // only becomes plottable once the target candle is in the series, and
+      // setData may repaint it away. Scroll-only jumps set theirs directly in
+      // the click handler; this keeps either kind attached.
+      if (lastJump !== null) candleMarkers.current?.([jumpMarker(lastJump.time, lastJump.plan)]);
       // Playback (or stepping) that has run past the view — e.g. after a jump
       // moved the viewport away from the right edge — follows the newest bar
       // again. Equal to or inside the range leaves the view untouched, so a
@@ -266,14 +303,18 @@ function App() {
 
   // The report chart lives in the results section's own container — its own
   // canvas, never the replay chart's — and remounts per run so each report
-  // opens with a fresh time scale.
+  // opens with a fresh time scale and its fill arrows; the jump-marker setter
+  // that arrives with the mount re-attaches the current landing (if any).
   React.useEffect(() => {
     if (backtest === null) return;
     const container = resultsChartRef.current;
     if (container === null) return;
-    const mounted = mountResultsChart(container, backtest.candles, backtest.result.equityCurve);
+    const mounted = mountResultsChart(container, backtest.candles, backtest.result.fills, backtest.result.equityCurve);
     resultsChartApi.current = mounted.chart;
+    resultsJumpMarker.current = mounted.setJumpMarker;
+    if (lastJump !== null) mounted.setJumpMarker(jumpMarker(lastJump.time, lastJump.plan));
     return () => {
+      resultsJumpMarker.current = null;
       resultsChartApi.current = null;
       mounted.dispose();
     };
@@ -308,6 +349,11 @@ function App() {
     // A deterministic restart recovers from a paused-by-failure replay; the
     // banner must not claim the fresh session is broken.
     setRuntimeError(null);
+    // The jump landing (marker + current row) belongs to the session that
+    // made it; a restart clears both charts and the highlight.
+    setLastJump(null);
+    candleMarkers.current?.([]);
+    resultsJumpMarker.current?.(null);
     stack.execution.reset();
     stack.portfolio.reset(STARTING_CAPITAL);
     pendingTimeScaleReset.current = true;
@@ -373,6 +419,12 @@ function App() {
 
   const position = portfolioState?.position ?? null;
   const gates = footerGates({ loaded: ready, tradeValid, hasPosition: position !== null });
+  // F26/F30: name the two dead states a paused chart can't explain itself —
+  // a fresh session and a finished one — so neither looks like a broken or
+  // manually paused run.
+  const caption = stack !== null && state !== null
+    ? replayCaption({ index: state.index, playing, finished: stack.engine.finished() })
+    : null;
 
   // Center `time` in a chart's viewport, keeping the current zoom (the visible
   // span) and never claiming time outside that chart's own data: a target past
@@ -396,17 +448,27 @@ function App() {
   const jumpReplayTo = (time: number) => {
     if (!stack) return;
     stack.replay.pause();
-    if (planJump(state?.candle.timestamp ?? null, time) === "seek+scroll") {
+    const plan = planJump(state?.candle.timestamp ?? null, time);
+    // Record the landing before acting: the data effect re-attaches this
+    // marker once a seek's candles land, and the current-row highlight reads
+    // the same state. Scroll-only jumps mark immediately (their data is
+    // already there); a seek's marker waits for the effect so its time never
+    // points at a series that does not contain it yet.
+    setLastJump({ time, plan });
+    if (plan === "seek+scroll") {
       stack.replay.fastForwardTo(time);
+    } else if (state !== null) {
+      candleMarkers.current?.([jumpMarker(time, plan)]);
     }
+    resultsJumpMarker.current?.(jumpMarker(time, plan));
     const after = stack.engine.getState();
     const chart = chartApi.current;
     if (chart !== null) {
       // Centering aims at the chart's series data: that data is current after
       // a scroll (engine untouched) but stale after a seek until the data
       // effect below lands the new candles — defer in that case.
-      const dataCurrent = state !== null && state.candle.timestamp === after.candle.timestamp;
-      if (dataCurrent) centerTimeScale(chart, time, after.visibleCandles);
+      const dataCurrentAfter = state !== null && state.candle.timestamp === after.candle.timestamp;
+      if (dataCurrentAfter) centerTimeScale(chart, time, after.visibleCandles);
       else pendingCenter.current = time;
     }
     if (resultsChartApi.current !== null && backtest !== null) {
@@ -439,6 +501,7 @@ function App() {
     <main>
       <section className="chart-shell">
         <div ref={chartRef} className="chart" />
+        {caption !== null && <div className="chart-caption">{caption}</div>}
         {!loaded && (
           <div className="chart-placeholder">
             {dataState.status === "error" ? (
@@ -467,6 +530,7 @@ function App() {
         replayTime={state?.candle.timestamp ?? null}
         onJumpToTime={stack !== null ? jumpReplayTo : undefined}
         hasPosition={position !== null}
+        activeTime={lastJump?.time ?? null}
       />
       <aside className="data-panel">
         <h2>Data Manager</h2>
