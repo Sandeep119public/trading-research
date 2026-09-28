@@ -17,6 +17,7 @@ import { ReplayController, type ReplaySpeed } from "@trading-research/replay";
 import type { Candle, MarketState } from "@trading-research/shared";
 import { toChartPoints } from "./chart-points";
 import { centeredRange, shouldFollowEngine } from "./chart-viewport";
+import { dataErrorDetail, friendlyDataError } from "./data-copy";
 import { ErrorBoundary } from "./error-boundary";
 import { footerGates } from "./footer-gates";
 import { executeManualIntent } from "./intents";
@@ -26,7 +27,6 @@ import { mountResultsChart } from "./results-chart";
 import { ResultsPanel, type BacktestView } from "./results-panel";
 import { tryRunEmaCrossBacktest } from "./run-backtest";
 import { RuntimeErrorBanner } from "./runtime-error";
-import { ConfigInputs } from "./config-inputs";
 import {
   DEFAULT_TRADE_CONFIG,
   DEFAULT_TRADE_DRAFT,
@@ -108,12 +108,15 @@ function App() {
   );
   const [stack, setStack] = React.useState<Stack | null>(null);
   const [backtest, setBacktest] = React.useState<BacktestView | null>(null);
-  // The session trade config, edited in both config input groups below.
+  // The session trade config, edited in the results panel's config group.
   // One stored value: replay and backtest derive from it, so they can never
   // silently disagree. Invalid input blocks actions; it never reaches an engine.
   const [draft, setDraft] = React.useState<TradeConfigDraft>(DEFAULT_TRADE_DRAFT);
   const trade = parseTradeConfig(draft);
   const tradeValid = trade.config !== null;
+  // Bumped by the placeholder's Retry button: re-runs the load effect for the
+  // current symbol/timeframe after a failed fetch.
+  const [reloadNonce, setReloadNonce] = React.useState(0);
   const [playing, setPlaying] = React.useState(false);
   const [speed, setSpeed] = React.useState<ReplaySpeed>(1);
   const [state, setState] = React.useState<MarketState | null>(null);
@@ -184,7 +187,7 @@ function App() {
       unsubscribe();
       replay?.pause();
     };
-  }, [symbol, timeframe]);
+  }, [symbol, timeframe, reloadNonce]);
 
   React.useEffect(() => {
     if (!stack || !chartRef.current) return;
@@ -287,13 +290,18 @@ function App() {
   };
 
   const loaded = stack !== null;
-  const placeholder =
-    dataState.status === "error"
-      ? `Data failed to load: ${dataState.error ?? "unknown error"}`
-      : `Loading ${symbol} ${timeframe} from ${DATA_API_URL}…`;
-  const rangeLabel = dataState.loadedRange
-    ? `${dateLabel(dataState.loadedRange.startTime)} → ${dateLabel(dataState.loadedRange.endTime)}`
-    : "no range loaded";
+  // F20: a data-consuming action is enabled only once the dataset has fully
+  // landed — a stack mid-fetch or in error state never gates Run.
+  const ready = loaded && dataState.status === "ready";
+  const rangeLabel = dataState.loadedRange ? (
+    <>
+      <span className="nb">{dateLabel(dataState.loadedRange.startTime)}</span>
+      {" → "}
+      <span className="nb">{dateLabel(dataState.loadedRange.endTime)} UTC</span>
+    </>
+  ) : (
+    "no range loaded"
+  );
 
   const reset = () => {
     if (!stack) return;
@@ -364,7 +372,7 @@ function App() {
   };
 
   const position = portfolioState?.position ?? null;
-  const gates = footerGates({ loaded, tradeValid, hasPosition: position !== null });
+  const gates = footerGates({ loaded: ready, tradeValid, hasPosition: position !== null });
 
   // Center `time` in a chart's viewport, keeping the current zoom (the visible
   // span) and never claiming time outside that chart's own data: a target past
@@ -431,11 +439,24 @@ function App() {
     <main>
       <section className="chart-shell">
         <div ref={chartRef} className="chart" />
-        {!loaded && <div className="chart-placeholder">{placeholder}</div>}
+        {!loaded && (
+          <div className="chart-placeholder">
+            {dataState.status === "error" ? (
+              <>
+                <span>Data failed to load: {friendlyDataError(dataState.error)}</span>
+                <button type="button" className="btn-secondary" onClick={() => setReloadNonce(n => n + 1)}>
+                  Retry
+                </button>
+              </>
+            ) : (
+              `Loading ${symbol} ${timeframe}…`
+            )}
+          </div>
+        )}
       </section>
       <ResultsPanel
         view={backtest}
-        loaded={loaded}
+        loaded={ready}
         onRun={runBacktest}
         chartRef={resultsChartRef}
         draft={draft}
@@ -445,17 +466,24 @@ function App() {
         onDraftChange={updateDraft}
         replayTime={state?.candle.timestamp ?? null}
         onJumpToTime={stack !== null ? jumpReplayTo : undefined}
+        hasPosition={position !== null}
       />
       <aside className="data-panel">
         <h2>Data Manager</h2>
         <dl>
           <dt>Symbol</dt><dd>{dataState.symbol}</dd>
           <dt>Timeframe</dt><dd>{dataState.timeframe}</dd>
-          <dt>Range</dt><dd>{rangeLabel}</dd>
+          <dt>Data window</dt><dd>{rangeLabel}</dd>
           <dt>Candles</dt><dd>{dataState.loadedRange ? dataState.candleCount : "—"}</dd>
           <dt>Status</dt><dd className={`status status-${dataState.status}`}>{dataState.status}</dd>
           {dataState.error !== null && <>
-            <dt>Error</dt><dd className="status status-error">{dataState.error}</dd>
+            <dt>Error</dt>
+            <dd className="status status-error">
+              {friendlyDataError(dataState.error)}
+              {dataErrorDetail(dataState.error) !== null && (
+                <span className="detail"> ({dataErrorDetail(dataState.error)})</span>
+              )}
+            </dd>
           </>}
         </dl>
       </aside>
@@ -467,10 +495,16 @@ function App() {
       <button onClick={() => submitIntent("buy")} disabled={gates.buy}>Buy</button>
       <button onClick={() => submitIntent("sell")} disabled={gates.sell}>Sell</button>
       <button onClick={closePosition} disabled={gates.close}>Close</button>
-      <ConfigInputs draft={draft} errors={trade.errors} onChange={updateDraft} />
       <div className="speeds">{([1, 2, 5, 10] as const).map(s => <button className={speed === s ? "active" : ""} key={s} onClick={() => setSpeed(s)}>{s}x</button>)}</div>
-      <div className="time">{state ? dateLabel(state.candle.timestamp * 1000) : "—"}</div>
-      <div className="time">{portfolioLabel(stack, state, portfolioState)}</div>
+      <div className="time">{state ? `${dateLabel(state.candle.timestamp * 1000)} UTC` : "—"}</div>
+      <div className="time readout">
+        {portfolioLabel(stack, state, portfolioState).split(" | ").map((part, i) => (
+          <React.Fragment key={i}>
+            {i > 0 && " | "}
+            <span className="nb">{part}</span>
+          </React.Fragment>
+        ))}
+      </div>
     </footer>
   </div>;
 }

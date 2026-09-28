@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  CLOSE_NOTICE,
   DEFAULT_TRADE_CONFIG,
   DEFAULT_TRADE_DRAFT,
+  configValidationMessages,
   parseTradeConfig,
   toBacktestConfig,
   toExecutionConfig,
@@ -124,5 +126,35 @@ describe("config derivation", () => {
     expect(toExecutionConfig(stored)).toEqual({ feePerUnit: 2, slippagePerUnit: 0.5 });
     expect(toBacktestConfig(stored, 1000).size).toBe(0.25);
     expect(toExecutionConfig(stored)).not.toBe(toExecutionConfig(stored));
+  });
+});
+
+// Phase 2 F7: the message shown for an invalid draft must depend on whether
+// an open position can still be closed, and must appear exactly once (the
+// results panel instance renders it; the footer instance was removed).
+describe("configValidationMessages", () => {
+  it("passes field errors through unchanged when no position is open", () => {
+    expect(configValidationMessages(["Size must be a finite number > 0"], false)).toEqual([
+      "Size must be a finite number > 0"
+    ]);
+  });
+
+  it("appends the close notice when an invalid draft coexists with an open position", () => {
+    expect(configValidationMessages(["Size must be a finite number > 0"], true)).toEqual([
+      "Size must be a finite number > 0",
+      CLOSE_NOTICE
+    ]);
+    expect(CLOSE_NOTICE).toBe("Closing uses your last valid settings.");
+  });
+
+  it("stays silent when the draft is valid, even with a position open", () => {
+    expect(configValidationMessages([], true)).toEqual([]);
+    expect(configValidationMessages([], false)).toEqual([]);
+  });
+
+  it("never mutates the caller's error array", () => {
+    const errors = ["Fee must be a finite number >= 0"];
+    configValidationMessages(errors, true);
+    expect(errors).toEqual(["Fee must be a finite number >= 0"]);
   });
 });

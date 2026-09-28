@@ -95,6 +95,30 @@ describe("ResultsPanel", () => {
     expect(markup).toContain('role="alert"');
     expect(markup).toContain("Fee must be a finite number &gt;= 0");
     expect(markup).toContain('value="-1"');
+    // No open position: nothing to close under last valid settings, so the
+    // close notice would be noise.
+    expect(markup).not.toContain("Closing uses your last valid settings.");
+  });
+
+  it("appends the close notice when an invalid draft coexists with an open position", () => {
+    const markup = renderToStaticMarkup(
+      <ResultsPanel
+        view={null}
+        loaded
+        onRun={() => {}}
+        hasPosition
+        {...configProps({
+          draft: { fee: "-1", slippage: "0", size: "0.01" },
+          configErrors: ["Fee must be a finite number >= 0"],
+          configValid: false
+        })}
+      />
+    );
+    expect(markup).toContain("Fee must be a finite number &gt;= 0");
+    expect(markup).toContain("Closing uses your last valid settings.");
+    // One control group renders the message: never once per group.
+    expect(markup.match(/class="config-error"/g)).toHaveLength(1);
+    expect(markup.match(/role="alert"/g)).toHaveLength(1);
   });
 
   it("shows a thrown run as a visible failure, never as an empty or no-run state", () => {
@@ -152,17 +176,18 @@ describe("ResultsPanel", () => {
     );
 
     expect(markup).toContain("<dd>10005.50</dd>");
-    expect(markup).toContain('<dd class="pos">10.00</dd>');
+    expect(markup).toContain('<dd class="pos">+10.00</dd>');
     expect(markup).toContain("<dd>12.34</dd>");
     expect(markup).toContain("<dd>3.00</dd>");
     expect(markup).toContain("<dd>100.0%</dd>");
     expect(markup).toContain("<dd>1</dd>");
     expect(markup).toContain("<dd>3</dd>");
-    expect(markup).toContain("2023-11-14 22:13 → 2023-11-14 22:23");
+    expect(markup).toContain("Backtest range · EMA(20)/EMA(50)");
+    expect(markup).toContain("2023-11-14 22:13 → 2023-11-14 22:23 UTC");
     expect(markup).toContain("Realized P&amp;L");
     expect(markup).toContain('<td class="side-buy">buy</td>');
     expect(markup).toContain('<td class="side-sell">sell</td>');
-    expect(markup).toContain('<td class="pos">10.00</td>');
+    expect(markup).toContain('<td class="pos">+10.00</td>');
     expect(markup).toContain("<td>0.00</td>");
     expect(markup).toContain("2023-11-14 22:13");
     expect(markup).toContain("2023-11-14 22:18");
@@ -246,7 +271,7 @@ describe("FillTable", () => {
   it("marks the default sort column in the header", () => {
     const markup = renderToStaticMarkup(<FillTable rows={[]} />);
     expect(markup).toContain('aria-sort="ascending"');
-    expect(markup).toContain("Time ▲");
+    expect(markup).toContain("Time (UTC) ▲");
     expect(markup).toContain('aria-sort="none"');
   });
 });

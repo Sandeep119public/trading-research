@@ -2,11 +2,11 @@ import { useState, type Ref } from "react";
 import type { BacktestResult } from "@trading-research/backtest";
 import type { Candle } from "@trading-research/shared";
 import { analyzeFills, sortFills, type FillRow, type FillSortKey, type SortDirection } from "./fill-analysis";
-import { formatFillTime, formatMoney, formatProfitFactor, formatWinRate } from "./report-format";
+import { formatFillTime, formatMoney, formatProfitFactor, formatSignedMoney, formatWinRate, pnlSignClass } from "./report-format";
 import { exportReport } from "./report-export";
 import { planJump } from "./jump-plan";
 import { ConfigInputs } from "./config-inputs";
-import type { TradeConfigDraft, TradeConfigField } from "./trade-config";
+import { configValidationMessages, type TradeConfigDraft, type TradeConfigField } from "./trade-config";
 
 export interface BacktestView {
   result: BacktestResult;
@@ -15,12 +15,8 @@ export interface BacktestView {
   timeframe: string;
 }
 
-function signClass(value: number): string | undefined {
-  return value < 0 ? "neg" : value > 0 ? "pos" : undefined;
-}
-
 const COLUMNS: ReadonlyArray<{ key: FillSortKey; label: string }> = [
-  { key: "time", label: "Time" },
+  { key: "time", label: "Time (UTC)" },
   { key: "side", label: "Side" },
   { key: "price", label: "Price" },
   { key: "quantity", label: "Qty" },
@@ -106,7 +102,7 @@ export function FillTable({
               <td>{formatMoney(row.fill.price)}</td>
               <td>{row.fill.quantity}</td>
               <td>{formatMoney(row.fill.fee)}</td>
-              <td className={signClass(row.realizedPnl)}>{formatMoney(row.realizedPnl)}</td>
+              <td className={pnlSignClass(row.realizedPnl)}>{formatSignedMoney(row.realizedPnl)}</td>
             </tr>
           );
         })}
@@ -123,9 +119,12 @@ export function FillTable({
  * for state it does not already own. Four states, all explicit: a run that
  * failed (runError), no run yet, a run with no fills ("No trades in this
  * run"), and a run with results — a failure is never rendered as a no-run or
- * empty state. The fill table's optional `onJumpToTime` makes each time cell
- * a jump affordance (with `replayTime` telling a free scroll from a
- * fast-forward); unwired, the table is exactly as before.
+ * empty state. The config controls sit in one row with the Run action so the
+ * validation message (with `hasPosition` adding the close notice) renders at
+ * exactly one place, beside the button it gates. The fill table's optional
+ * `onJumpToTime` makes each time cell a jump affordance (with `replayTime`
+ * telling a free scroll from a fast-forward); unwired, the table is exactly
+ * as before.
  */
 export function ResultsPanel({
   view,
@@ -138,7 +137,8 @@ export function ResultsPanel({
   runError,
   onDraftChange,
   replayTime,
-  onJumpToTime
+  onJumpToTime,
+  hasPosition = false
 }: {
   view: BacktestView | null;
   loaded: boolean;
@@ -151,8 +151,10 @@ export function ResultsPanel({
   onDraftChange: (field: TradeConfigField, value: string) => void;
   replayTime?: number | null;
   onJumpToTime?: (timestamp: number) => void;
+  hasPosition?: boolean;
 }) {
   const stats = view === null ? null : analyzeFills(view.result.fills);
+  const messages = configValidationMessages(configErrors, hasPosition);
 
   return (
     <section className="results-panel" aria-label="Backtest results">
@@ -160,10 +162,13 @@ export function ResultsPanel({
         <h2>Backtest results</h2>
         {view !== null && (
           <span className="results-meta">
-            EMA(20)/EMA(50) · {view.symbol} · {view.timeframe} ·{" "}
-            {formatFillTime(view.candles[0].timestamp)} → {formatFillTime(view.candles[view.candles.length - 1].timestamp)}
+            Backtest range · EMA(20)/EMA(50) · {view.symbol} · {view.timeframe} ·{" "}
+            {formatFillTime(view.candles[0].timestamp)} → {formatFillTime(view.candles[view.candles.length - 1].timestamp)} UTC
           </span>
         )}
+      </div>
+      <div className="results-controls">
+        <ConfigInputs draft={draft} errors={messages} onChange={onDraftChange} />
         <div className="results-actions">
           {view !== null && (
             <button type="button" className="results-export btn-secondary" onClick={() => exportReport(view)}>
@@ -175,7 +180,6 @@ export function ResultsPanel({
           </button>
         </div>
       </div>
-      <ConfigInputs draft={draft} errors={configErrors} onChange={onDraftChange} />
       {view === null || stats === null ? (
         runError !== null ? (
           <p className="results-error" role="alert">Backtest failed: {runError}</p>
@@ -191,7 +195,7 @@ export function ResultsPanel({
             </div>
             <div>
               <dt>Realized P&L</dt>
-              <dd className={signClass(view.result.realizedPnl)}>{formatMoney(view.result.realizedPnl)}</dd>
+              <dd className={pnlSignClass(view.result.realizedPnl)}>{formatSignedMoney(view.result.realizedPnl)}</dd>
             </div>
             <div>
               <dt>Max drawdown</dt>
