@@ -12,6 +12,21 @@ export function formatMoney(value: number): string {
   return value.toFixed(2);
 }
 
+/**
+ * P&L figures state their own sign: gains get an explicit "+", losses keep
+ * "-", zero stays bare. Color alone must never be the only carrier of
+ * gain/loss, and a reader must not have to infer the sign from context.
+ */
+export function formatSignedMoney(value: number): string {
+  const fixed = value.toFixed(2);
+  return value > 0 ? `+${fixed}` : fixed;
+}
+
+/** The color class for a P&L figure: "neg"/"pos", nothing for exactly zero. */
+export function pnlSignClass(value: number): "neg" | "pos" | undefined {
+  return value < 0 ? "neg" : value > 0 ? "pos" : undefined;
+}
+
 export function formatWinRate(rate: number | null): string {
   return rate === null ? "—" : `${(rate * 100).toFixed(1)}%`;
 }

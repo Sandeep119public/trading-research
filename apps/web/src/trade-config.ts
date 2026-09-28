@@ -81,6 +81,24 @@ export function parseTradeConfig(draft: TradeConfigDraft): ParsedTradeConfig {
   return { config: { feePerUnit, slippagePerUnit, size }, errors };
 }
 
+/**
+ * Shown alongside the field errors whenever the draft is invalid while a
+ * position is open: a close fill executes under the last valid config, so
+ * fee/slippage/size typed in the box are NOT what the close will use. Without
+ * this notice a fill can land with numbers the user never saw applied.
+ */
+export const CLOSE_NOTICE = "Closing uses your last valid settings.";
+
+/**
+ * The single validation message list the UI renders (F7: exactly one place,
+ * never duplicated across control groups). Field errors always pass through;
+ * the close notice joins them only when the config is invalid AND a position
+ * can be closed under the last valid settings.
+ */
+export function configValidationMessages(errors: readonly string[], hasPosition: boolean): string[] {
+  return hasPosition && errors.length > 0 ? [...errors, CLOSE_NOTICE] : [...errors];
+}
+
 /** Derive the replay engine's config from the session value. Fresh object
  * every call: mutating a derived config can never leak back into the
  * session state or into the other driver's derivation. */

@@ -138,3 +138,21 @@ typecheck/test/build with shown output → PR → CI green on exact commit → m
 - F21 and the exit-trap half of F7: FIXED in PR #20 (`fix/ui-audit-bugs`, merged as `fc6cb85`); root causes recorded in the PR body.
 - F22 (Phase 3): preferred fix = make the axis tag show the series' FINAL value so it matches the FINAL EQUITY card, and let the crosshair label carry the hovered value; hiding the tag entirely is the fallback. Add a test that pins the choice so the tag and the card can never drift apart.
 - F7 (Phase 2): when the config is invalid and a position is open, the validation message must say that closing uses the last valid settings (e.g. "Closing uses your last valid settings.") — close fills under the last valid config, and without that notice a fill can land with fee/slippage differing from what is typed in the box.
+
+### Phase 2 resolutions (`feature/ui-layout-copy`)
+- F7/F11: consolidated — the footer `ConfigInputs` instance was removed, leaving one instance beside Run, so
+  the validation message (and the close notice) render at exactly one place. `configValidationMessages(errors,
+  hasPosition)` in `trade-config.ts` appends the notice only when the draft is invalid AND a position is open;
+  the disabled-set half of F7 was already fixed in PR #20 (`footer-gates`).
+- F10: " UTC" applied to every user-facing UTC timestamp (header range end, clock, DM window end, results meta
+  end, fills header "Time (UTC)"). All derive from `toISOString`/UTC epoch math.
+- F13: header date range stays hidden ≤600px — deliberate: the same window is in the Data Manager's
+  "Data window" row. Meta wraps instead of ellipsizing; the footer loses a row with the config group removed.
+- F15 unit: `maxDrawdown` is **currency**, not a percent — `computeMaxDrawdown` (packages/backtest/src/index.ts)
+  returns peak − equity in quote units. Adding "%" would misreport the stat, so the value keeps money
+  formatting (consistent with Final equity / Fees paid). The rest of F15 landed: `formatSignedMoney`
+  (+10.00) + `pnlSignClass`, and the CSS specificity fix that lets `.neg`/`.pos`/`.side-*` actually color
+  cells (they were losing to `.fills-table td` / `.results-stats dd`).
+- F18: `data-copy.ts` splits the data layer's "Data service unreachable: <transport>" into a friendly
+  headline (everywhere) + transport detail (Data Manager only). F19: Retry button in the chart placeholder
+  re-runs the load effect via `reloadNonce`. F20: Run/footer gates take `loaded && status === "ready"`.

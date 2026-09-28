@@ -3,11 +3,11 @@ import type { TradeConfigDraft, TradeConfigField } from "./trade-config";
 /**
  * The session trade-config inputs: fee and slippage per unit (the
  * ExecutionEngine model — fee = quantity × feePerUnit), and size in base-asset
- * units per order. Rendered twice, once near the replay trading controls and
- * once near the backtest Run control, both bound to the same App state — two
- * views of one stored value, never two stored values. Presentational only:
- * validation lives in parseTradeConfig, and an invalid draft disables every
- * action instead of reaching an engine.
+ * units per order. Rendered once, beside the backtest Run control, bound to
+ * the App state — the single surface where the config is edited, read, and
+ * validated (the footer previously carried a duplicate instance). Presentational
+ * only: validation lives in parseTradeConfig, and an invalid draft disables
+ * every action instead of reaching an engine.
  */
 export function ConfigInputs({
   draft,
