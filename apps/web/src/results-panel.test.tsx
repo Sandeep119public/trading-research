@@ -212,8 +212,8 @@ describe("ResultsPanel", () => {
     const present = renderToStaticMarkup(
       <ResultsPanel view={view([])} loaded onRun={() => {}} {...configProps()} />
     );
-    expect(present).toContain('class="results-export"');
-    expect(present).toContain("Export CSV");
+    expect(present).toContain('class="results-export');
+    expect(present.match(/Export CSV/g)).toHaveLength(1);
   });
 
   it("shows profit factor as a dash for an empty run without inventing a second N/A state", () => {

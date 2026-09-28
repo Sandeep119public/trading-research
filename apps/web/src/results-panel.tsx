@@ -166,11 +166,11 @@ export function ResultsPanel({
         )}
         <div className="results-actions">
           {view !== null && (
-            <button type="button" className="results-export" onClick={() => exportReport(view)}>
+            <button type="button" className="results-export btn-secondary" onClick={() => exportReport(view)}>
               Export CSV
             </button>
           )}
-          <button type="button" className="results-run" disabled={!loaded || !configValid} onClick={onRun}>
+          <button type="button" className="results-run btn-primary" disabled={!loaded || !configValid} onClick={onRun}>
             Run backtest
           </button>
         </div>
