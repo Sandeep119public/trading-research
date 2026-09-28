@@ -43,6 +43,9 @@ button:disabled:hover{background:#18181b}
 .fills-table td{padding:6px 8px;border-bottom:1px solid #18181b;color:#d4d4d8;white-space:nowrap;font-variant-numeric:tabular-nums}
 .fills-table tr:last-child td{border-bottom:none}
 .fills-table tbody tr:hover td{background:#131316}
+.fill-jump{border:none;background:none;color:inherit;font:inherit;padding:0;cursor:pointer;text-align:left}
+.fill-jump:hover{background:none;text-decoration:underline}
+.fill-jump--seek{color:#fbbf24}
 .side-buy{color:#4ade80}
 .side-sell{color:#f87171}
 .neg{color:#f87171}

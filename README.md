@@ -12,13 +12,14 @@ The current foundation is implemented and verified in local development and GitH
 - symbol (BTCUSDT, ETHUSDT, SOLUSDT) and timeframe (1m, 5m, 15m, 1h) selectors, both limited to what the service can actually serve
 - read-only Data Manager panel: symbol, timeframe, loaded range, candle count, and ready/fetching/error status
 - single-owner MarketEngine with the Future Data Rule
-- ReplayController with play/pause/step and 1x/2x/5x/10x speeds
+- ReplayController with play/pause/step, 1x/2x/5x/10x speeds, and `fastForwardTo` (seek by stepping every candle in between)
 - ExecutionEngine with deterministic candle-mode fills, SL/TP, fees, and slippage
 - Portfolio with netting, realized/unrealized P&L, fees, and equity
 - BacktestDriver reusing the same MarketEngine, ExecutionEngine, and Portfolio
 - `EmaCrossStrategy`, an EMA(20)/EMA(50) crossover on the Strategy contract: long-only, no lookahead, at most one signal per bar
 - backtest results panel: summary stats (final equity, realized P&L, max drawdown, fees, win rate, profit factor, trades, fills), the equity curve on its own chart, and a sortable fill table — with an explicit "No trades in this run" state
 - one-click CSV export of the backtest report: the same summary stats, fill rows, and equity curve as three RFC 4180 sections
+- click-to-jump from the fill table: click a fill's time to center both charts on it — replay is paused first, and a fill ahead of the current position fast-forwards through every candle in between (those rows are marked amber before the click)
 - fee/slippage/size configuration shared by replay and backtest from one session config: plain number inputs beside both control groups, validated, zero-cost defaults preserved
 - deterministic engine, strategy, replay, execution, portfolio, backtest, and data tests
 - Lightweight Charts web UI
@@ -55,7 +56,6 @@ DATA_API_URL=http://127.0.0.1:8787 npm test --workspace @trading-research/backte
 ## Not yet built
 
 - Replay start-date selection (in V1 scope) — replay currently opens at the oldest candle of the loaded lookback range.
-- Clicking a fill to jump the chart to that fill's time — the fill table only sorts and displays.
 - Strategy choice in the UI - the panel runs the EMA(20)/EMA(50) sample; fee, slippage, and size are configurable.
 - More derived report metrics (Sharpe, Sortino, expectancy) beyond win rate, trade count, and profit factor.
 - Side-by-side run comparison of two runs.

@@ -11,6 +11,8 @@ export class ReplayController {
   private _playing = false;
   private listener: ReplayListener | null = null;
   private readonly playingListeners = new Set<ReplayPlayingListener>();
+  private seeking = false;
+  private seekAborted = false;
 
   constructor(engine: MarketEngine) {
     this.engine = engine;
@@ -47,6 +49,37 @@ export class ReplayController {
     return state;
   }
 
+  /**
+   * Step forward until the engine's current candle reaches `timestamp` or the
+   * data runs out, then return the state replay is at. Pauses first. Never
+   * moves backward: a target at or behind the current time is a no-op, and a
+   * target past the last candle stops at the last candle.
+   *
+   * Every intermediate state goes through step(), so seek-to-X is exactly N
+   * individual steps — same listener emissions, same execution/portfolio
+   * sync — with no second time-advancement mechanism. A listener that calls
+   * pause() mid-seek (the way the UI reacts to a failure: pause + banner)
+   * aborts the loop at that candle instead of marching past a broken one.
+   */
+  fastForwardTo(timestamp: number): MarketState {
+    this.pause();
+    this.seeking = true;
+    this.seekAborted = false;
+    try {
+      while (
+        !this.seekAborted &&
+        !this.engine.finished() &&
+        this.engine.getState().candle.timestamp < timestamp
+      ) {
+        this.step();
+      }
+      return this.engine.getState();
+    } finally {
+      this.seeking = false;
+      this.seekAborted = false;
+    }
+  }
+
   play(): void {
     if (this._playing || this.engine.finished()) return;
     this.setPlaying(true);
@@ -54,6 +87,11 @@ export class ReplayController {
   }
 
   pause(): void {
+    // An external pause during a fast-forward (the failure path's existing
+    // "pause + Replay stopped banner" reaction) must stop the seek loop too,
+    // not just the play timer. The seek's own initial pause runs before the
+    // loop flags are set, so it never self-aborts.
+    if (this.seeking) this.seekAborted = true;
     if (this.timer !== null) {
       clearInterval(this.timer);
       this.timer = null;
