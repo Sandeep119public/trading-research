@@ -8,7 +8,7 @@ export function RuntimeErrorBanner({ message, onDismiss }: { message: string; on
   return (
     <div className="runtime-error" role="alert">
       <span>{message}</span>
-      <button type="button" onClick={onDismiss}>
+      <button type="button" className="btn-ghost" onClick={onDismiss}>
         Dismiss
       </button>
     </div>

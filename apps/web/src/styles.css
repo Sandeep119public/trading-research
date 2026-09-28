@@ -1,80 +1,111 @@
-*{box-sizing:border-box}html,body,#root{margin:0;width:100%;height:100%;font-family:Inter,system-ui,sans-serif;background:#09090b;color:#fafafa}.app{height:100%;display:grid;grid-template-rows:56px auto 1fr 64px}.app header{display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid #27272a;background:#0c0c0f}.app header strong{font-size:15px;letter-spacing:.01em}.badge{margin-left:10px;padding:4px 7px;border:1px solid #3f3f46;border-radius:5px;font-size:10px;color:#a1a1aa}.symbol{font-size:12px;color:#a1a1aa}.chart-shell{height:100%;min-height:0}.chart{width:100%;height:100%}footer{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid #27272a;background:#0c0c0f}button{border:1px solid #3f3f46;background:#18181b;color:#e4e4e7;border-radius:6px;padding:8px 11px;font:inherit;font-size:12px;cursor:pointer}button:hover{background:#27272a}.speeds{display:flex;gap:4px;margin-left:4px}.speeds button{padding:7px 9px}.speeds .active{background:#e4e4e7;color:#09090b;border-color:#e4e4e7}.time{margin-left:auto;color:#a1a1aa;font-variant-numeric:tabular-nums;font-size:12px}@media(max-width:600px){.app{grid-template-rows:50px auto 1fr auto}.app header{padding:0 12px}.symbol{display:none}footer{flex-wrap:wrap;padding:8px}.time{width:100%;order:3;margin-left:0;text-align:center;font-size:11px}.chart{min-height:0}}
+/* Design tokens (Phase 1, F1-F6): the only place raw colors live. AA contrast of
+   every muted/disabled/focus pair is pinned by styles-tokens.test.ts. */
+:root{
+  --bg:#09090b;--surface:#0c0c0f;--surface-hover:#131316;
+  --btn-bg:#18181b;--btn-bg-hover:#27272a;
+  --border:#27272a;--border-strong:#3f3f46;--border-faint:#18181b;
+  --text:#fafafa;--text-2:#e4e4e7;--text-3:#d4d4d8;
+  --label:#a1a1aa;--muted:#85858f;
+  --disabled-bg:#18181b;--disabled-text:#85858f;--disabled-border:#27272a;
+  --accent:#60a5fa;--accent-hover:#7dd3fc;--on-accent:#09090b;
+  --success:#4ade80;--danger:#f87171;--warn:#facc15;--warn-strong:#fbbf24;
+  --danger-bg:#2a1215;--danger-border:#7f1d1d;--danger-text:#fca5a5;
+  --radius:6px;--radius-sm:5px;--gap:8px;
+  --focus-color:#60a5fa;--focus-width:2px;--focus-offset:2px;
+}
+*{box-sizing:border-box}html,body,#root{margin:0;width:100%;height:100%;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text)}.app{height:100%;display:grid;grid-template-rows:56px auto 1fr 64px}.app header{display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid var(--border);background:var(--surface)}.app header strong{font-size:15px;letter-spacing:.01em}.badge{margin-left:10px;padding:4px 7px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-size:10px;color:var(--label)}.symbol{font-size:12px;color:var(--label);font-variant-numeric:tabular-nums}.chart-shell{height:100%;min-height:0}.chart{width:100%;height:100%}footer{display:flex;align-items:center;gap:var(--gap);padding:10px 14px;border-top:1px solid var(--border);background:var(--surface)}button{border:1px solid var(--border-strong);background:var(--btn-bg);color:var(--text-2);border-radius:var(--radius);padding:8px 11px;font:inherit;font-size:12px;cursor:pointer}button:hover{background:var(--btn-bg-hover)}.speeds{display:flex;gap:4px;margin-left:4px}.speeds button{padding:7px 9px}.speeds .active{background:var(--text-2);color:var(--bg);border-color:var(--text-2)}.time{margin-left:auto;color:var(--label);font-variant-numeric:tabular-nums;font-size:12px}@media(max-width:600px){.app{grid-template-rows:50px auto 1fr auto}.app header{padding:0 12px}.symbol{display:none}footer{flex-wrap:wrap;padding:8px}.time{width:100%;order:3;margin-left:0;text-align:center;font-size:11px}.chart{min-height:0}}
+
+/* Button variants (F4): base button = secondary look; primary drives the one
+   main action, danger marks the session wipe, ghost sits on colored banners. */
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn-secondary{background:var(--btn-bg);border-color:var(--border-strong);color:var(--text-2)}
+.btn-secondary:hover{background:var(--btn-bg-hover)}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--label)}
+.btn-ghost:hover{background:var(--btn-bg-hover);color:var(--text-2)}
+.btn-danger{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger-text)}
+.btn-danger:hover{background:var(--danger-border)}
+
+/* Disabled (F3): explicit text/border/bg tokens instead of opacity — disabled
+   text keeps AA on its own background and never looks merely "faded in". */
+button:disabled{background:var(--disabled-bg);border-color:var(--disabled-border);color:var(--disabled-text);cursor:not-allowed}
+button:disabled:hover{background:var(--disabled-bg)}
+
+/* One keyboard focus ring for every interactive element (F5): tokenized,
+   2px accent + offset, never UA blue and never a selection highlight. */
+button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:var(--focus-width) solid var(--focus-color);outline-offset:var(--focus-offset)}
 
 /* App shell: chart + backtest results band in column 1, Data Manager alongside. */
 .app main{display:grid;grid-template-columns:minmax(0,1fr) 252px;grid-template-rows:minmax(0,1fr) auto;min-height:0}
 .chart-shell{position:relative;min-width:0;grid-column:1;grid-row:1}
-.chart-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:#a1a1aa;font-size:13px;line-height:1.6;overflow-wrap:anywhere}
-.data-panel{grid-column:2;grid-row:1 / span 2;border-left:1px solid #27272a;background:#0c0c0f;padding:14px 16px;overflow:auto}
-.data-panel h2{margin:0 0 12px;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#71717a}
+.chart-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--label);font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+.data-panel{grid-column:2;grid-row:1 / span 2;border-left:1px solid var(--border);background:var(--surface);padding:14px 16px;overflow:auto}
+.data-panel h2{margin:0 0 12px;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .data-panel dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px 12px;margin:0;font-size:12px}
-.data-panel dt{color:#71717a}
-.data-panel dd{margin:0;color:#e4e4e7;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
-.status-idle{color:#a1a1aa}
-.status-fetching{color:#facc15}
-.status-ready{color:#4ade80}
-.status-error{color:#f87171}
-.selectors{display:flex;gap:8px}
-select{border:1px solid #3f3f46;background:#18181b;color:#e4e4e7;border-radius:6px;padding:7px 9px;font:inherit;font-size:12px;cursor:pointer}
-select:focus{outline:1px solid #a1a1aa}
-button:disabled{opacity:.45;cursor:not-allowed}
-button:disabled:hover{background:#18181b}
+.data-panel dt{color:var(--muted)}
+.data-panel dd{margin:0;color:var(--text-2);overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.status-idle{color:var(--label)}
+.status-fetching{color:var(--warn)}
+.status-ready{color:var(--success)}
+.status-error{color:var(--danger)}
+.selectors{display:flex;gap:var(--gap)}
+select{border:1px solid var(--border-strong);background:var(--btn-bg);color:var(--text-2);border-radius:var(--radius);padding:7px 9px;font:inherit;font-size:12px;cursor:pointer}
 
 /* Backtest results report: own section under the chart. The report's equity
    chart gets its own canvas (see results-chart.ts); nothing here ever writes
    to the replay chart above it. */
-.results-panel{grid-column:1;grid-row:2;border-top:1px solid #27272a;background:#0c0c0f;padding:10px 14px;max-height:45vh;overflow:auto}
+.results-panel{grid-column:1;grid-row:2;border-top:1px solid var(--border);background:var(--surface);padding:10px 14px;max-height:45vh;overflow:auto}
 .results-header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.results-panel h2{margin:0;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#71717a;white-space:nowrap}
-.results-meta{flex:1;min-width:0;font-size:11px;color:#a1a1aa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.results-panel h2{margin:0;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.results-meta{flex:1;min-width:0;font-size:11px;color:var(--label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .results-actions{margin-left:auto;display:flex;align-items:center;gap:10px;white-space:nowrap}
 .results-run{white-space:nowrap}
-.results-hint{margin:2px 0 6px;color:#71717a;font-size:12px}
-.results-empty{margin:10px 0 4px;color:#a1a1aa;font-size:12px}
-.results-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px 16px;margin:0 0 10px}
-.results-stats dt{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#71717a}
-.results-stats dd{margin:3px 0 0;font-size:13px;color:#e4e4e7;font-variant-numeric:tabular-nums}
-.results-chart{height:160px;border:1px solid #18181b;border-radius:6px;overflow:hidden}
-.results-table-wrap{max-height:200px;overflow:auto;border:1px solid #18181b;border-radius:6px}
+.results-hint{margin:2px 0 6px;color:var(--muted);font-size:12px}
+.results-empty{margin:10px 0 4px;color:var(--label);font-size:12px}
+.results-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:var(--gap) 16px;margin:0 0 10px}
+.results-stats dt{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.results-stats dd{margin:3px 0 0;font-size:13px;color:var(--text-2);font-variant-numeric:tabular-nums}
+.results-chart{height:160px;border:1px solid var(--border-faint);border-radius:var(--radius);overflow:hidden}
+.results-table-wrap{max-height:200px;overflow:auto;border:1px solid var(--border-faint);border-radius:var(--radius)}
 .fills-table{width:100%;border-collapse:collapse;font-size:12px}
-.fills-table th{position:sticky;top:0;background:#0c0c0f;text-align:left;border-bottom:1px solid #27272a;z-index:1}
-.fills-table th button{border:none;background:none;color:#71717a;font:inherit;font-size:11px;padding:7px 8px;cursor:pointer}
-.fills-table th button:hover{background:#18181b}
-.fills-table th button.sorted{color:#fafafa}
-.fills-table td{padding:6px 8px;border-bottom:1px solid #18181b;color:#d4d4d8;white-space:nowrap;font-variant-numeric:tabular-nums}
+.fills-table th{position:sticky;top:0;background:var(--surface);text-align:left;border-bottom:1px solid var(--border);z-index:1}
+.fills-table th button{border:none;background:none;color:var(--muted);font:inherit;font-size:11px;padding:7px 8px;cursor:pointer}
+.fills-table th button:hover{background:var(--btn-bg)}
+.fills-table th button.sorted{color:var(--text)}
+.fills-table td{padding:6px 8px;border-bottom:1px solid var(--border-faint);color:var(--text-3);white-space:nowrap;font-variant-numeric:tabular-nums}
 .fills-table tr:last-child td{border-bottom:none}
-.fills-table tbody tr:hover td{background:#131316}
+.fills-table tbody tr:hover td{background:var(--surface-hover)}
 .fill-jump{border:none;background:none;color:inherit;font:inherit;padding:0;cursor:pointer;text-align:left}
 .fill-jump:hover{background:none;text-decoration:underline}
-.fill-jump--seek{color:#fbbf24}
-.side-buy{color:#4ade80}
-.side-sell{color:#f87171}
-.neg{color:#f87171}
-.pos{color:#4ade80}
+.fill-jump--seek{color:var(--warn-strong)}
+.side-buy{color:var(--success)}
+.side-sell{color:var(--danger)}
+.neg{color:var(--danger)}
+.pos{color:var(--success)}
 
 /* Session trade config: one set of inputs near each control group, one
    stored value behind both. */
-.config-inputs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.config-inputs{display:flex;align-items:center;gap:var(--gap);flex-wrap:wrap}
 .results-panel .config-inputs{margin:2px 0 10px}
 footer .config-inputs{margin-left:4px}
-.config-inputs label{display:flex;align-items:center;gap:4px;font-size:11px;color:#a1a1aa}
-.config-inputs input{width:64px;border:1px solid #3f3f46;background:#18181b;color:#e4e4e7;border-radius:6px;padding:6px 7px;font:inherit;font-size:12px}
-.config-inputs input:focus{outline:1px solid #a1a1aa}
-.config-error{color:#f87171;font-size:11px}
+.config-inputs label{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--label)}
+.config-inputs input{width:64px;border:1px solid var(--border-strong);background:var(--btn-bg);color:var(--text-2);border-radius:var(--radius);padding:6px 7px;font:inherit;font-size:12px}
+.config-error{color:var(--danger);font-size:11px}
 
 @media(max-width:600px){
   .app main{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto auto}
   .chart-shell{grid-row:1}
   .results-panel{grid-column:1;grid-row:2;max-height:40vh}
-  .data-panel{grid-column:1;grid-row:3;border-left:none;border-top:1px solid #27272a;max-height:38vh}
+  .data-panel{grid-column:1;grid-row:3;border-left:none;border-top:1px solid var(--border);max-height:38vh}
   .results-chart{height:130px}
 }
 
 /* Failure surfacing: the banner occupies its own grid row between header and
    main (the empty slot collapses to zero height), the crash fallback takes
    over #root, and a failed run prints red in place of the no-run hint. */
-.runtime-error{display:flex;align-items:center;gap:12px;padding:8px 14px;background:#2a1215;border-bottom:1px solid #7f1d1d;color:#fca5a5;font-size:12px}
+.runtime-error{display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--danger-bg);border-bottom:1px solid var(--danger-border);color:var(--danger-text);font-size:12px}
 .runtime-error span{flex:1;min-width:0;overflow-wrap:anywhere}
 .app-error{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center}
 .app-error h1{margin:0;font-size:15px}
-.app-error p{margin:0;color:#f87171;font-size:13px;overflow-wrap:anywhere}
-.results-error{margin:2px 0 6px;color:#f87171;font-size:12px}
+.app-error p{margin:0;color:var(--danger);font-size:13px;overflow-wrap:anywhere}
+.results-error{margin:2px 0 6px;color:var(--danger);font-size:12px}
