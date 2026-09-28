@@ -141,6 +141,14 @@ The results panel is a report over a completed BacktestDriver run, kept structur
 - Failure state: `tryRunEmaCrossBacktest()` converts the driver's throw contract into an explicit outcome; a failed run clears the previous report and renders `Backtest failed: <message>` (alert role) in place of the no-run hint, so an engine or config failure is never read as a completed run or an empty one.
 - Determinism: same candles + config → identical `BacktestResult` (BacktestDriver's guarantee), so repeated runs render identical panels.
 
+## Playback keyboard shortcuts (implemented)
+The footer's replay controls are reachable from the keyboard, through a pure adapter and the same gates the buttons use:
+
+- `keyToAction` (`apps/web/src/key-to-action.ts`) turns a key event into `"toggle"` | `"step"` | null: Space toggles play/pause, ArrowRight steps one candle. It is side-effect free — deciding what a key means and performing it are separate concerns. A focused INPUT/SELECT/TEXTAREA/editable region keeps every key (typing a fee never steps the replay), Space stays native on focused buttons/links so it cannot fire twice, and modified chords (Ctrl/Meta/Alt) are ignored.
+- One window `keydown` listener performs the action through the same `togglePlaying`/`stepReplay` handlers the footer buttons call, with the `footer-gates` conditions inside them — a shortcut can never do what a disabled button refuses. `preventDefault` runs only when a shortcut actually acts.
+- ArrowLeft is deliberately inert. No back-step exists anywhere in the engine surface (`ReplayController` is reset/step/fastForwardTo/play/pause/setSpeed only; nothing in `packages/*` steps backward), and stepping backward would have to rewind MarketEngine plus the execution and portfolio state derived from it — behavior the UI may not invent. The adapter therefore maps no key to it; the browser probe pins ArrowLeft inert. This is a recorded deviation from the audit finding, which had assumed a step-back existed.
+- Accessibility companions: every keyboard stop shows the Phase 1 focus-visible ring, and both charting-library attribution links carry `aria-label` via `attribution.ts nameAttribution` — the library injects and later replaces that anchor asynchronously, so the naming follows every appearance and is disposed with its chart.
+
 ## Execution model
 - V1 is candle mode only.
 - Backtest strategy signals use a completed candle; market entries fill at the next candle open.

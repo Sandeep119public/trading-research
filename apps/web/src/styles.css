@@ -44,10 +44,20 @@ button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible,[t
 .data-panel dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px 12px;margin:0;font-size:12px}
 .data-panel dt{color:var(--muted)}
 .data-panel dd{margin:0;color:var(--text-2);overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
-.status-idle{color:var(--label)}
-.status-fetching{color:var(--warn)}
-.status-ready{color:var(--success)}
-.status-error{color:var(--danger)}
+/* F34: the status reads as a chip — the word itself stays the signal (never
+   color alone), the chrome is tokens-only: a currentColor border carries each
+   state's own tint against the unchanged panel background, so text contrast
+   is exactly what it was before. The dl is a grid, so this child blockifies
+   to display:block; justify-self:start keeps the pill hugging its text
+   instead of stretching across the value column. */
+.status{display:inline-block;justify-self:start;padding:1px 8px;border:1px solid currentColor;border-radius:999px;font-size:11px;line-height:1.6}
+/* Doubled class: `.data-panel dd` (0,1,1) would beat a bare (0,1,0)
+   `.status-*` selector and silently flatten every state to text-2 — which is
+   exactly what happened until this chip pass caught it. */
+.status.status-idle{color:var(--label)}
+.status.status-fetching{color:var(--warn)}
+.status.status-ready{color:var(--success)}
+.status.status-error{color:var(--danger)}
 .nb{white-space:nowrap}
 .time.readout{white-space:normal}
 .data-panel .detail{color:var(--label);font-size:11px}

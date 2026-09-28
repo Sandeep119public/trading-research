@@ -31,6 +31,8 @@ import { ErrorBoundary } from "./error-boundary";
 import { footerGates } from "./footer-gates";
 import { jumpMarker, type ChartMarker } from "./fill-markers";
 import { executeManualIntent } from "./intents";
+import { nameAttribution } from "./attribution";
+import { keyToAction, type ShortcutAction } from "./key-to-action";
 import { planJump, type JumpPlan } from "./jump-plan";
 import { syncFromMarketSafe } from "./replay-sync";
 import { mountResultsChart } from "./results-chart";
@@ -222,6 +224,7 @@ function App() {
       rightPriceScale: { borderColor: "#27272a", minimumWidth: 60 },
       timeScale: { borderColor: "#27272a", timeVisible: true, rightOffset: 4 }
     });
+    const stopAttribution = nameAttribution(chartRef.current);
     const series = chart.addSeries(CandlestickSeries, {});
     // Volume gets its own pane: overlay scaleMargins are not honored for
     // overlay series in lightweight-charts v5, which left full-height volume
@@ -244,6 +247,7 @@ function App() {
     observer.observe(chartRef.current);
     return () => {
       observer.disconnect();
+      stopAttribution();
       candleMarkers.current = null;
       chartApi.current = null;
       candleSeries.current = null;
@@ -363,9 +367,16 @@ function App() {
   };
 
   const togglePlaying = () => {
-    if (!stack) return;
+    // Keyboard shortcuts call this too — the gate is inside, not on the
+    // button, so a key can never do what the disabled control refuses.
+    if (!stack || gates.play) return;
     if (playing) stack.replay.pause();
     else stack.replay.play();
+  };
+
+  const stepReplay = () => {
+    if (!stack || gates.step) return;
+    stack.replay.step();
   };
 
   const runBacktest = () => {
@@ -425,6 +436,27 @@ function App() {
   const caption = stack !== null && state !== null
     ? replayCaption({ index: state.index, playing, finished: stack.engine.finished() })
     : null;
+
+  // F31: playback shortcuts. keyToAction decides which key means what — and
+  // which the focused widget keeps for itself — while this effect only
+  // performs the action, through the same gated handlers the footer buttons
+  // use. The latest-handler ref keeps one stable listener with no stale
+  // closure (client-only render, so assigning during render is safe).
+  const performShortcut = React.useRef<(action: ShortcutAction) => void>(() => {});
+  performShortcut.current = action => {
+    if (action === "toggle") togglePlaying();
+    else stepReplay();
+  };
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const action = keyToAction(event);
+      if (action === null) return;
+      event.preventDefault();
+      performShortcut.current(action);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // Center `time` in a chart's viewport, keeping the current zoom (the visible
   // span) and never claiming time outside that chart's own data: a target past
@@ -555,7 +587,7 @@ function App() {
     <footer>
       <button onClick={reset} disabled={gates.reset} className="btn-danger">↺ Reset</button>
       <button onClick={togglePlaying} disabled={gates.play}>{playing ? "Pause" : "Play"}</button>
-      <button onClick={() => stack?.replay.step()} disabled={gates.step}>Step</button>
+      <button onClick={stepReplay} disabled={gates.step}>Step</button>
       <button onClick={() => submitIntent("buy")} disabled={gates.buy}>Buy</button>
       <button onClick={() => submitIntent("sell")} disabled={gates.sell}>Sell</button>
       <button onClick={closePosition} disabled={gates.close}>Close</button>

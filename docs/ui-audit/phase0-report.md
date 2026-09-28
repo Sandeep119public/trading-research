@@ -206,3 +206,43 @@ typecheck/test/build with shown output → PR → CI green on exact commit → m
   ARCHITECTURE.md). Probe: green buy + red sell arrows pixel-verified on the report chart (31 hits each
   in-window), zero green/red marker pixels on the replay chart (its candles use lc defaults, distinct
   from the token colors).
+### Phase 4 resolutions (`feature/ui-keyboard-a11y`)
+- F31: `keyToAction` (`apps/web/src/key-to-action.ts`) — pure key-to-intent adapter: Space -> "toggle",
+  ArrowRight -> "step", everything else null. Fields own their keys (INPUT/SELECT/TEXTAREA/editable regions
+  keep all of them), Space stays native on focused buttons/links (no double activation), modifier chords
+  ignored. Red-first: 9 tests written against the missing module (needed the `happy-dom` pragma — a plain
+  `.test.ts` runs in the node environment, which is itself what made the first run red); mutation "remove
+  the field-owning check" caught by 2 failures and restored. Wiring: one window `keydown` listener behind a
+  latest-handler ref (single stable listener, no stale closure) performing through the same
+  `togglePlaying`/`stepReplay` the footer buttons use, gates inside — a key can never do what a disabled
+  button refuses. Probe: Space on body Play->Pause->Play; ArrowRight = exactly one 5m candle per press
+  (18:15->18:20->18:25) and single, not a runaway; silent in the focused Fee input and timeframe select;
+  exactly-once on a focused button (a double fire would net no visible change); toggles at 390 too.
+  **Deviation:** ArrowLeft is deliberately unmapped. The finding assumed a step-back existed; grep shows no
+  `stepBack`/`goBack`/`previous` anywhere in `packages/*` and `ReplayController` offers only
+  reset/step/fastForwardTo/play/pause/setSpeed — a back-step would have to rewind MarketEngine plus the
+  execution/portfolio state derived from it, which the UI may not invent and this milestone may not touch
+  (apps/web only). Recorded in ARCHITECTURE.md; the probe pins ArrowLeft inert.
+- F32: attribution naming — the first fix (one-shot `setAttribute` right after `createChart`) looked correct
+  but the probe read an empty label back: the library injects the anchor asynchronously AND replaces it
+  later (raw dump at status-ready: `aria-label` null on a node my sync query had already passed). Fix is
+  `attribution.ts nameAttribution(root)` — labels every (re)appearance via a MutationObserver and returns a
+  disposer wired into the chart effect cleanup and `mountResultsChart.dispose`. 4 units cover sync-landed,
+  late-landed, replaced-anchor, and disposed cases. Probe: both charts named ("TradingView charting
+  library"), hrefs intact; tab sweep = 53 stops, zero without a >=2px ring (the Phase 1 focus-visible rule
+  covers every stop, including the named logo link itself).
+- F33: `focus-cycle.test.tsx` — renders the real `ResultsPanel`, dispatches focusin/focusout across every
+  button and input, and asserts disabled state, alerts, and validation errors are identical before/after.
+  The probe does the same at app level: the full 53-button disabled map is byte-identical across a
+  focus/blur sweep (Close stays correctly disabled = no position; nothing else flips). The original
+  "unexplained Buy-disabled" was not reproducible; the pin now guards it either way.
+- F34: status chip — `.status` pill: inline-block + 1px currentColor border + 999px radius, tokens only, the
+  word itself still the signal. The probe caught a latent bug while asserting it: `.data-panel dd` (0,1,1)
+  out-specifies a bare `.status-ready` (0,1,0), so every status color had been silently flattening to
+  text-2 — fixed by doubling the class (`.status.status-ready`), with the specificity trap noted in the CSS.
+  Second subtlety: the dl is a grid, so the child blockifies to `display:block`; `justify-self:start` keeps
+  the pill hugging its text. Probe: ready chip = rgb(74,222,128) (= `--success`), width 45px inside the
+  219px value column.
+- F35: no code change, decision recorded: `title=` on the fill-jump time buttons stays as a hover
+  enhancement (it doubles as an SR description), while the critical info — what each row color means — is
+  in-DOM text via the F23 legend, so nothing critical is hover-only.

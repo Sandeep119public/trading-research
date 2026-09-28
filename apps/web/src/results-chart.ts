@@ -6,6 +6,7 @@ import {
   type IChartApi,
   type ISeriesApi
 } from "lightweight-charts";
+import { nameAttribution } from "./attribution";
 import type { Candle, Fill } from "@trading-research/shared";
 import { toEquityPoints } from "./chart-points";
 import { toFillMarkers, type ChartMarker } from "./fill-markers";
@@ -125,6 +126,7 @@ export function mountResultsChart(
     width: container.clientWidth,
     height: container.clientHeight
   });
+  const stopAttribution = nameAttribution(container);
   const equity = populateEquityChart(chart, candles, equityCurve);
   let jump: ChartMarker | null = null;
   const markers = createSeriesMarkers(equity, reportMarkers(candles, fills, null));
@@ -139,6 +141,7 @@ export function mountResultsChart(
     },
     dispose: () => {
       observer.disconnect();
+      stopAttribution();
       chart.remove();
     }
   };
