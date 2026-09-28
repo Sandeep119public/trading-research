@@ -31,6 +31,8 @@ If two modules can both mutate the same trading state, that is a design bug. The
 ## The Future Data Rule
 At replay time T, no component may expose data with timestamp > T. Loading a full dataset and merely rendering the first N candles is a violation if an indicator or strategy can read the future array. The engine must make this structurally hard. The Future Data Rule governs the **replay view**: the replay chart and everything rendered alongside it. The backtest results report is a separate view over a completed run — see "Backtest results view" for that boundary. Dataset candles are frozen at the engine/data boundary, so no consumer holding a state reference can mutate history either.
 
+A fill-row jump (click-to-jump) moves the replay view by advancing T itself: `ReplayController.fastForwardTo` steps every candle in between through the existing `step()` path, and the chart's series still only ever receives `state.visibleCandles`. The rule therefore holds by construction — the jump code never touches candle data at all. Scrolling the results report's own chart moves only that report view (over a completed run), never replay state.
+
 ## Repo layout
 ```
 apps/web/
@@ -69,6 +71,19 @@ interface ExecutionEngine {
   reset(): void
   pendingCount(): number
   hasOpenRisk(): boolean
+}
+
+interface ReplayController {
+  play(): void
+  pause(): void
+  step(): MarketState | null
+  reset(startIndex: number): void
+  fastForwardTo(timestamp: number): MarketState
+  setSpeed(speed: ReplaySpeed): void
+  subscribe(listener: (state: MarketState) => void): () => void
+  subscribePlaying(listener: (playing: boolean) => void): () => void
+  readonly playing: boolean
+  readonly speed: ReplaySpeed
 }
 ```
 
@@ -119,6 +134,7 @@ The results panel is a report over a completed BacktestDriver run, kept structur
 - Trade assumptions are user-set, not hardcoded: the UI owns one session `TradeConfig` (fee/slippage/size, plain number inputs beside the replay trading controls and the backtest Run control, two views of one stored value). Each backtest run maps it to `BacktestConfig` — which extends `ExecutionConfig` with `startingCapital` and `size`, so fee/slippage have one type shared with ExecutionEngine — and the replay stack's ExecutionEngine is created from it and live-updated on every valid edit (`updateConfig`, which never touches pending orders, open risk, or the order-id allocator — reconfiguration is not a reset). `size` feeds the strategy's quantity through the run wiring; the driver validates it at the config boundary but never interprets strategy params. Invalid input shows a visible error and disables trading and Run instead of clamping or leaking NaN into an engine, and the same boundary rejects extreme-but-finite values (over `MAX_TRADE_CONFIG_VALUE`) that would otherwise overflow engine math into Infinity/NaN. Defaults are zero-cost (fee 0, slippage 0, size 0.01), so existing behavior is unchanged until the user edits a field.
 - Derived display stats — per-fill realized P&L, trade count, win rate, profit factor — are computed in `apps/web/src/fill-analysis.ts` by walking a throwaway `Portfolio` instance, so position accounting has exactly one owner and the UI holds no second copy of the netting rules that could drift when Portfolio changes. Per-fill realized P&L is the delta of `realizedPnl` (fees stay out because Portfolio keeps them out), and on top of that sit only report semantics: round-trip boundaries (position flat, or side flipped by an over-close), per-trade fee attribution, and win/loss classification — so the numbers sum back to BacktestResult's own metrics. `BacktestResult` itself is unchanged: no new fields. Win rate counts completed round trips only (a still-open trade has no outcome) and renders "—" when there are none; a run with zero fills renders an explicit "No trades in this run" state, never an empty table that looks broken. Profit factor is gross profit over gross loss of those same completed round trips (per-trade net after fees — win rate's unit, not a second one), with its representation decided explicitly rather than left to arithmetic: a ratio (0 when every completed trade lost, rendered "0" and not "0.00"), the literal `"infinite"` rendered "∞" when wins exist but no losing trade does — never raw `Infinity`, which `.toFixed()` would render as the string "Infinity" — and `null` rendered "—" when nothing completed or all trades were breakeven (0/0, nothing to ratio). Display formatting for these stats lives in `apps/web/src/report-format.ts`, shared with the CSV export below, so each representation has exactly one definition.
 - CSV export: the header's `Export CSV` button (rendered only when a report is on screen) downloads `buildReportCsv(view)` (`apps/web/src/report-export.ts`) — three RFC 4180 sections separated by one blank line, records CRLF: a `metric,value` summary of run meta and the same derived stats, the fill rows from the same `analyzeFills` walk (same per-fill realized P&L the table shows), and the equity curve paired through `toEquityPoints`, which throws on a length mismatch rather than exporting a timeline that lies. Because it serializes the same `BacktestResult` through the same `report-format.ts` formatters, the file cannot show different numbers than the panel — "—", "∞", and "0" carry through and the string "Infinity" cannot appear — and the download is UTF-8 with BOM so Excel reads the symbols. Presentation only: no engine access, no new state, no `BacktestResult` fields.
+- Fill-row jump (click-to-jump): each fill's time cell is a button when `onJumpToTime` is wired. The click always pauses replay first, then follows `planJump(replayTime, fillTime)` — one pure definition behind both the pre-click affordance and the action, so what the row promises is what the click does. `planJump` is `"scroll"` for a fill at or behind T and `"seek+scroll"` ahead of T (or when T is unknown): scroll-only centers both charts on the fill's time with the engine untouched; a seek runs `ReplayController.fastForwardTo` first, then centers both viewports on that time. T never moves backward — a fill behind T is always a scroll, and a target past the end of data stops at the last candle. Before the click the two read differently: `fill-jump--view` (free scroll) versus `fill-jump--seek` (amber — advances the live session). **Accepted side effect** (accepted explicitly, with no "only while flat" guard): seeking replays every candle in between through `step()`, so SL/TP may evaluate and fills, position, and P&L change exactly as they would have if replay had played there — that is what the amber affordance warns about. Seek failures reuse the existing failure path: a subscriber's `pause()` (the drain-failure reaction) aborts the seek loop mid-candle, and the banner shows `Replay stopped: <message>` as usual.
 - Failure state: `tryRunEmaCrossBacktest()` converts the driver's throw contract into an explicit outcome; a failed run clears the previous report and renders `Backtest failed: <message>` (alert role) in place of the no-run hint, so an engine or config failure is never read as a completed run or an empty one.
 - Determinism: same candles + config → identical `BacktestResult` (BacktestDriver's guarantee), so repeated runs render identical panels.
 
@@ -136,7 +152,7 @@ Engine and UI failures are visible where the user acts, never swallowed or rende
 
 - Crash boundary: `ErrorBoundary` wraps the app root; any render-time error shows a visible alert with the message and a Reload control instead of an empty screen (`error-boundary.tsx`).
 - Backtest run: `tryRunEmaCrossBacktest` returns `{ok:true,result} | {ok:false,message}`; the results panel renders failures as `Backtest failed: <message>` and clears any stale report (see Backtest results view).
-- Replay drain: the subscription uses `syncFromMarketSafe`; on an engine failure (e.g. a non-positive fill price) it pauses replay at the broken candle and shows `Replay stopped: <message>` in a dismissible alert banner. Reset clears the banner and re-enters the deterministic path.
+- Replay drain: the subscription uses `syncFromMarketSafe`; on an engine failure (e.g. a non-positive fill price) it pauses replay at the broken candle and shows `Replay stopped: <message>` in a dismissible alert banner. Reset clears the banner and re-enters the deterministic path. A `fastForwardTo` seek honors that same pause: it aborts the seek loop at that candle instead of marching past a broken one.
 - Manual intents: `executeManualIntent` (`intents.ts`) reads the LIVE Portfolio, never the render snapshot, so a stale "flat" can never submit a rejected second open; no-op intents return false without touching the order-id allocator, and any engine rejection surfaces as `Order failed: <message>` in the banner while the footer republishes the actual portfolio state.
 
 ## V1 scope

@@ -30,16 +30,24 @@ export function populateEquityChart(
   equity.setData(toEquityPoints(candles, equityCurve));
 }
 
+/** The mounted results chart: the caller can move its time scale (a fill-row
+ * jump scrolls every chart) and must run the disposer on unmount. */
+export interface MountedResultsChart {
+  chart: IChartApi;
+  dispose: () => void;
+}
+
 /**
  * Create the results section's chart with its equity curve sized to the
- * container. Returns a disposer; the caller owns the lifecycle (the effect
- * that mounts on a new result). Mirrors the replay chart's resize handling.
+ * container. Returns the chart plus a disposer; the caller owns the lifecycle
+ * (the effect that mounts on a new result). Mirrors the replay chart's
+ * resize handling.
  */
 export function mountResultsChart(
   container: HTMLElement,
   candles: readonly Candle[],
   equityCurve: readonly number[]
-): () => void {
+): MountedResultsChart {
   const chart = createChart(container, {
     ...REPORT_OPTIONS,
     width: container.clientWidth,
@@ -49,8 +57,11 @@ export function mountResultsChart(
   const resize = () => chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
   const observer = new ResizeObserver(resize);
   observer.observe(container);
-  return () => {
-    observer.disconnect();
-    chart.remove();
+  return {
+    chart,
+    dispose: () => {
+      observer.disconnect();
+      chart.remove();
+    }
   };
 }

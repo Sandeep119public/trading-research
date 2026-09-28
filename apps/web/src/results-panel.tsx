@@ -4,6 +4,7 @@ import type { Candle } from "@trading-research/shared";
 import { analyzeFills, sortFills, type FillRow, type FillSortKey, type SortDirection } from "./fill-analysis";
 import { formatFillTime, formatMoney, formatProfitFactor, formatWinRate } from "./report-format";
 import { exportReport } from "./report-export";
+import { planJump } from "./jump-plan";
 import { ConfigInputs } from "./config-inputs";
 import type { TradeConfigDraft, TradeConfigField } from "./trade-config";
 
@@ -27,7 +28,26 @@ const COLUMNS: ReadonlyArray<{ key: FillSortKey; label: string }> = [
   { key: "realized", label: "Realized P&L" }
 ];
 
-export function FillTable({ rows }: { rows: readonly FillRow[] }) {
+const SCROLL_TITLE = "Scroll the charts to this time";
+const SEEK_TITLE = "Fast-forwards replay to this time — every candle in between is processed";
+
+/**
+ * The sortable fill table. With `onJumpToTime` wired, each time cell becomes a
+ * button: click jumps both charts to that fill, fast-forwarding replay first
+ * when the time is ahead of T (planJump decides, so the pre-click look —
+ * `fill-jump--view` free scroll versus `fill-jump--seek` advancing the live
+ * session — states exactly what the click will do). Without the callback the
+ * cells stay plain text.
+ */
+export function FillTable({
+  rows,
+  replayTime,
+  onJumpToTime
+}: {
+  rows: readonly FillRow[];
+  replayTime?: number | null;
+  onJumpToTime?: (timestamp: number) => void;
+}) {
   const [sort, setSort] = useState<{ key: FillSortKey; direction: SortDirection }>({
     key: "time",
     direction: "asc"
@@ -62,16 +82,34 @@ export function FillTable({ rows }: { rows: readonly FillRow[] }) {
         </tr>
       </thead>
       <tbody>
-        {sorted.map(row => (
-          <tr key={`${row.fill.orderId}#${row.fill.timestamp}`}>
-            <td>{formatFillTime(row.fill.timestamp)}</td>
-            <td className={row.fill.side === "buy" ? "side-buy" : "side-sell"}>{row.fill.side}</td>
-            <td>{formatMoney(row.fill.price)}</td>
-            <td>{row.fill.quantity}</td>
-            <td>{formatMoney(row.fill.fee)}</td>
-            <td className={signClass(row.realizedPnl)}>{formatMoney(row.realizedPnl)}</td>
-          </tr>
-        ))}
+        {sorted.map(row => {
+          const plan = planJump(replayTime ?? null, row.fill.timestamp);
+          const time = formatFillTime(row.fill.timestamp);
+          return (
+            <tr key={`${row.fill.orderId}#${row.fill.timestamp}`}>
+              <td>
+                {onJumpToTime === undefined ? (
+                  time
+                ) : (
+                  <button
+                    type="button"
+                    className={plan === "seek+scroll" ? "fill-jump fill-jump--seek" : "fill-jump fill-jump--view"}
+                    aria-label={`Jump to ${time}`}
+                    title={plan === "seek+scroll" ? SEEK_TITLE : SCROLL_TITLE}
+                    onClick={() => onJumpToTime(row.fill.timestamp)}
+                  >
+                    {time}
+                  </button>
+                )}
+              </td>
+              <td className={row.fill.side === "buy" ? "side-buy" : "side-sell"}>{row.fill.side}</td>
+              <td>{formatMoney(row.fill.price)}</td>
+              <td>{row.fill.quantity}</td>
+              <td>{formatMoney(row.fill.fee)}</td>
+              <td className={signClass(row.realizedPnl)}>{formatMoney(row.realizedPnl)}</td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
@@ -85,7 +123,9 @@ export function FillTable({ rows }: { rows: readonly FillRow[] }) {
  * for state it does not already own. Four states, all explicit: a run that
  * failed (runError), no run yet, a run with no fills ("No trades in this
  * run"), and a run with results — a failure is never rendered as a no-run or
- * empty state.
+ * empty state. The fill table's optional `onJumpToTime` makes each time cell
+ * a jump affordance (with `replayTime` telling a free scroll from a
+ * fast-forward); unwired, the table is exactly as before.
  */
 export function ResultsPanel({
   view,
@@ -96,7 +136,9 @@ export function ResultsPanel({
   configErrors,
   configValid,
   runError,
-  onDraftChange
+  onDraftChange,
+  replayTime,
+  onJumpToTime
 }: {
   view: BacktestView | null;
   loaded: boolean;
@@ -107,6 +149,8 @@ export function ResultsPanel({
   configValid: boolean;
   runError: string | null;
   onDraftChange: (field: TradeConfigField, value: string) => void;
+  replayTime?: number | null;
+  onJumpToTime?: (timestamp: number) => void;
 }) {
   const stats = view === null ? null : analyzeFills(view.result.fills);
 
@@ -179,7 +223,7 @@ export function ResultsPanel({
             <p className="results-empty">No trades in this run.</p>
           ) : (
             <div className="results-table-wrap">
-              <FillTable rows={stats.rows} />
+              <FillTable rows={stats.rows} replayTime={replayTime} onJumpToTime={onJumpToTime} />
             </div>
           )}
         </>

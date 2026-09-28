@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { createChart, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi } from "lightweight-charts";
+import { createChart, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
 import {
   BinanceDataManager,
   SUPPORTED_SYMBOLS,
@@ -18,6 +18,7 @@ import type { Candle, MarketState } from "@trading-research/shared";
 import { toChartPoints } from "./chart-points";
 import { ErrorBoundary } from "./error-boundary";
 import { executeManualIntent } from "./intents";
+import { planJump } from "./jump-plan";
 import { syncFromMarketSafe } from "./replay-sync";
 import { mountResultsChart } from "./results-chart";
 import { ResultsPanel, type BacktestView } from "./results-panel";
@@ -90,6 +91,7 @@ function App() {
   const candleSeries = React.useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeries = React.useRef<ISeriesApi<"Histogram"> | null>(null);
   const resultsChartRef = React.useRef<HTMLDivElement>(null);
+  const resultsChartApi = React.useRef<IChartApi | null>(null);
   const pendingTimeScaleReset = React.useRef(false);
 
   const [symbol, setSymbol] = React.useState<SupportedSymbol>(SUPPORTED_SYMBOLS[0]);
@@ -243,7 +245,12 @@ function App() {
     if (backtest === null) return;
     const container = resultsChartRef.current;
     if (container === null) return;
-    return mountResultsChart(container, backtest.candles, backtest.result.equityCurve);
+    const mounted = mountResultsChart(container, backtest.candles, backtest.result.equityCurve);
+    resultsChartApi.current = mounted.chart;
+    return () => {
+      resultsChartApi.current = null;
+      mounted.dispose();
+    };
   }, [backtest]);
 
   const changeSymbol = (next: SupportedSymbol) => {
@@ -332,6 +339,40 @@ function App() {
 
   const position = portfolioState?.position ?? null;
 
+  // Center `time` in a chart's viewport, keeping the current zoom (the visible
+  // span) and never claiming time outside that chart's own data: a target past
+  // the end clamps to the last candle, where a seek would land too.
+  const centerTimeScale = (api: IChartApi, time: number, data: readonly Candle[]) => {
+    if (data.length === 0) return;
+    const first = data[0].timestamp;
+    const last = data[data.length - 1].timestamp;
+    const range = api.timeScale().getVisibleRange();
+    const span = range === null ? last - first : Number(range.to) - Number(range.from);
+    const half = span / 2;
+    const from = Math.min(Math.max(time - half, first), last);
+    const to = Math.min(Math.max(time + half, first), last);
+    if (to <= from) return;
+    api.timeScale().setVisibleRange({ from: from as UTCTimestamp, to: to as UTCTimestamp });
+  };
+
+  // A fill-row jump: pause first — a jump never plays — then per planJump
+  // either scroll only (fill at or behind T, engine untouched) or fast-forward
+  // every candle in between via fastForwardTo (stepped, so a failure mid-seek
+  // pauses through the subscriber's existing "Replay stopped" path). T only
+  // ever moves forward. Then center both charts on the fill.
+  const jumpReplayTo = (time: number) => {
+    if (!stack) return;
+    stack.replay.pause();
+    if (planJump(state?.candle.timestamp ?? null, time) === "seek+scroll") {
+      stack.replay.fastForwardTo(time);
+    }
+    const after = stack.engine.getState();
+    if (chartApi.current !== null) centerTimeScale(chartApi.current, time, after.visibleCandles);
+    if (resultsChartApi.current !== null && backtest !== null) {
+      centerTimeScale(resultsChartApi.current, time, backtest.candles);
+    }
+  };
+
   return <div className="app">
     <header>
       <div><strong>Trading Research</strong><span className="badge">REPLAY</span></div>
@@ -369,6 +410,8 @@ function App() {
         configValid={tradeValid}
         runError={runError}
         onDraftChange={updateDraft}
+        replayTime={state?.candle.timestamp ?? null}
+        onJumpToTime={stack !== null ? jumpReplayTo : undefined}
       />
       <aside className="data-panel">
         <h2>Data Manager</h2>
