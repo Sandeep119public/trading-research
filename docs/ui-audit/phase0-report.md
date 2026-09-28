@@ -132,3 +132,9 @@ Keyboard: Space/ArrowRight no-op ("Play -> Play"); tab order Symbol→Timeframe�
 4. Phase 4 keyboard/a11y → F31-F35 (+ keyToAction tests, input-focus mutation).
 Each phase: own branch → red-first tests → fix → before/after browser screenshots → docs (same commit) →
 typecheck/test/build with shown output → PR → CI green on exact commit → merge → post-merge CI.
+
+## Addenda (post-audit directives, 2026-09-28)
+
+- F21 and the exit-trap half of F7: FIXED in PR #20 (`fix/ui-audit-bugs`, merged as `fc6cb85`); root causes recorded in the PR body.
+- F22 (Phase 3): preferred fix = make the axis tag show the series' FINAL value so it matches the FINAL EQUITY card, and let the crosshair label carry the hovered value; hiding the tag entirely is the fallback. Add a test that pins the choice so the tag and the card can never drift apart.
+- F7 (Phase 2): when the config is invalid and a position is open, the validation message must say that closing uses the last valid settings (e.g. "Closing uses your last valid settings.") — close fills under the last valid config, and without that notice a fill can land with fee/slippage differing from what is typed in the box.
