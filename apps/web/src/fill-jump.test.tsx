@@ -133,4 +133,50 @@ describe("fill table jump affordance", () => {
     const plain = renderToStaticMarkup(<ResultsPanel view={view()} {...configProps} />);
     expect(plain).not.toContain('aria-label="Jump');
   });
+
+  it("shows the jump legend with the row classes, only when jumps are wired", () => {
+    const configProps = {
+      draft: DEFAULT_TRADE_DRAFT,
+      configErrors: [] as string[],
+      configValid: true,
+      runError: null as string | null,
+      onDraftChange: (() => {}) as (field: TradeConfigField, value: string) => void,
+      loaded: true,
+      onRun: () => {}
+    };
+    const wired = renderToStaticMarkup(
+      <ResultsPanel view={view()} onJumpToTime={() => {}} replayTime={T} {...configProps} />
+    );
+    expect(wired).toContain('class="jump-legend"');
+    expect(wired).toContain("jump-swatch fill-jump--seek");
+    expect(wired).toContain("jump-swatch fill-jump--view");
+    // Legend semantics reach the screen, not just the module.
+    expect(wired).toMatch(/advance/i);
+    expect(wired).toMatch(/scroll.*only/i);
+    // Rows really carry the classes the legend swatches show.
+    expect((wired.match(/fill-jump--seek/g) ?? []).length).toBeGreaterThan(1);
+    expect((wired.match(/fill-jump--view/g) ?? []).length).toBeGreaterThan(1);
+
+    const plain = renderToStaticMarkup(<ResultsPanel view={view()} {...configProps} />);
+    expect(plain).not.toContain("jump-legend");
+  });
+
+  it("marks exactly the jumped-to row as current", () => {
+    const markup = renderToStaticMarkup(
+      <FillTable rows={ROWS} onJumpToTime={() => {}} replayTime={T} activeTime={1700000300} />
+    );
+    expect(markup.match(/fill-current/g)).toHaveLength(1);
+    const start = markup.indexOf('class="fill-current"');
+    const end = markup.indexOf("</tr>", start);
+    const rowHtml = markup.slice(start, end);
+    expect(rowHtml).toContain("2023-11-14 22:18");
+    expect(rowHtml).not.toContain("2023-11-14 22:13");
+  });
+
+  it("leaves no row current when nothing has been jumped to", () => {
+    const markup = renderToStaticMarkup(
+      <FillTable rows={ROWS} onJumpToTime={() => {}} replayTime={T} activeTime={null} />
+    );
+    expect(markup).not.toContain("fill-current");
+  });
 });
