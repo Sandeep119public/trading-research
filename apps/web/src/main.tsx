@@ -16,7 +16,9 @@ import { Portfolio, type PortfolioState } from "@trading-research/portfolio";
 import { ReplayController, type ReplaySpeed } from "@trading-research/replay";
 import type { Candle, MarketState } from "@trading-research/shared";
 import { toChartPoints } from "./chart-points";
+import { centeredRange, shouldFollowEngine } from "./chart-viewport";
 import { ErrorBoundary } from "./error-boundary";
+import { footerGates } from "./footer-gates";
 import { executeManualIntent } from "./intents";
 import { planJump } from "./jump-plan";
 import { syncFromMarketSafe } from "./replay-sync";
@@ -93,6 +95,11 @@ function App() {
   const resultsChartRef = React.useRef<HTMLDivElement>(null);
   const resultsChartApi = React.useRef<IChartApi | null>(null);
   const pendingTimeScaleReset = React.useRef(false);
+  // A seek-jump's center target, held until the post-seek data lands (see the
+  // data effect below): centering inside the click handler aims at a series
+  // that still ends before the seek, and lightweight-charts clamps such a
+  // range to a degenerate one-bar viewport that setData then preserves forever.
+  const pendingCenter = React.useRef<number | null>(null);
 
   const [symbol, setSymbol] = React.useState<SupportedSymbol>(SUPPORTED_SYMBOLS[0]);
   const [timeframe, setTimeframe] = React.useState<SupportedTimeframe>("5m");
@@ -223,6 +230,22 @@ function App() {
       pendingTimeScaleReset.current = false;
       chartApi.current?.timeScale().resetTimeScale();
     }
+    const chart = chartApi.current;
+    if (chart !== null) {
+      // A deferred seek-jump centers here, on the just-landed data.
+      const target = pendingCenter.current;
+      if (target !== null) {
+        pendingCenter.current = null;
+        centerTimeScale(chart, target, state.visibleCandles);
+      }
+      // Playback (or stepping) that has run past the view — e.g. after a jump
+      // moved the viewport away from the right edge — follows the newest bar
+      // again. Equal to or inside the range leaves the view untouched, so a
+      // paused pan or a fresh jump center is never yanked away.
+      const range = chart.timeScale().getVisibleRange();
+      const pure = range === null ? null : { from: Number(range.from), to: Number(range.to) };
+      if (shouldFollowEngine(state.candle.timestamp, pure)) chart.timeScale().scrollToRealTime();
+    }
   }, [state]);
 
   React.useEffect(() => {
@@ -327,7 +350,10 @@ function App() {
   };
 
   const closePosition = () => {
-    if (!stack || trade.config === null) return;
+    // Close never consults the draft: the intent uses the position's own
+    // quantity, and the engine keeps its last valid config — an invalid Size
+    // edit must not trap an open position (footer-gates keeps the button on).
+    if (!stack) return;
     try {
       executeManualIntent(stack.execution, stack.portfolio, stack.engine, { kind: "close" });
     } catch (error) {
@@ -338,6 +364,7 @@ function App() {
   };
 
   const position = portfolioState?.position ?? null;
+  const gates = footerGates({ loaded, tradeValid, hasPosition: position !== null });
 
   // Center `time` in a chart's viewport, keeping the current zoom (the visible
   // span) and never claiming time outside that chart's own data: a target past
@@ -348,11 +375,9 @@ function App() {
     const last = data[data.length - 1].timestamp;
     const range = api.timeScale().getVisibleRange();
     const span = range === null ? last - first : Number(range.to) - Number(range.from);
-    const half = span / 2;
-    const from = Math.min(Math.max(time - half, first), last);
-    const to = Math.min(Math.max(time + half, first), last);
-    if (to <= from) return;
-    api.timeScale().setVisibleRange({ from: from as UTCTimestamp, to: to as UTCTimestamp });
+    const target = centeredRange(time, first, last, span);
+    if (target === null) return;
+    api.timeScale().setVisibleRange({ from: target.from as UTCTimestamp, to: target.to as UTCTimestamp });
   };
 
   // A fill-row jump: pause first — a jump never plays — then per planJump
@@ -367,7 +392,15 @@ function App() {
       stack.replay.fastForwardTo(time);
     }
     const after = stack.engine.getState();
-    if (chartApi.current !== null) centerTimeScale(chartApi.current, time, after.visibleCandles);
+    const chart = chartApi.current;
+    if (chart !== null) {
+      // Centering aims at the chart's series data: that data is current after
+      // a scroll (engine untouched) but stale after a seek until the data
+      // effect below lands the new candles — defer in that case.
+      const dataCurrent = state !== null && state.candle.timestamp === after.candle.timestamp;
+      if (dataCurrent) centerTimeScale(chart, time, after.visibleCandles);
+      else pendingCenter.current = time;
+    }
     if (resultsChartApi.current !== null && backtest !== null) {
       centerTimeScale(resultsChartApi.current, time, backtest.candles);
     }
@@ -428,12 +461,12 @@ function App() {
       </aside>
     </main>
     <footer>
-      <button onClick={reset} disabled={!loaded}>↺ Reset</button>
-      <button onClick={togglePlaying} disabled={!loaded}>{playing ? "Pause" : "Play"}</button>
-      <button onClick={() => stack?.replay.step()} disabled={!loaded}>Step</button>
-      <button onClick={() => submitIntent("buy")} disabled={!loaded || !tradeValid || position !== null}>Buy</button>
-      <button onClick={() => submitIntent("sell")} disabled={!loaded || !tradeValid || position !== null}>Sell</button>
-      <button onClick={closePosition} disabled={!loaded || !tradeValid || position === null}>Close</button>
+      <button onClick={reset} disabled={gates.reset}>↺ Reset</button>
+      <button onClick={togglePlaying} disabled={gates.play}>{playing ? "Pause" : "Play"}</button>
+      <button onClick={() => stack?.replay.step()} disabled={gates.step}>Step</button>
+      <button onClick={() => submitIntent("buy")} disabled={gates.buy}>Buy</button>
+      <button onClick={() => submitIntent("sell")} disabled={gates.sell}>Sell</button>
+      <button onClick={closePosition} disabled={gates.close}>Close</button>
       <ConfigInputs draft={draft} errors={trade.errors} onChange={updateDraft} />
       <div className="speeds">{([1, 2, 5, 10] as const).map(s => <button className={speed === s ? "active" : ""} key={s} onClick={() => setSpeed(s)}>{s}x</button>)}</div>
       <div className="time">{state ? dateLabel(state.candle.timestamp * 1000) : "—"}</div>
