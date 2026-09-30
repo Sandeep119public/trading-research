@@ -3,6 +3,12 @@ import { BacktestDriver } from "@trading-research/backtest";
 import type { Candle } from "@trading-research/shared";
 import { EmaCrossStrategy } from "@trading-research/strategy";
 import { analyzeFills } from "./fill-analysis";
+import {
+  formatMoney,
+  formatProfitFactor,
+  formatSignedMoney,
+  formatWinRate
+} from "./report-format";
 import { runEmaCrossBacktest, tryRunEmaCrossBacktest } from "./run-backtest";
 
 const STARTING_CAPITAL = 10000;
@@ -158,6 +164,43 @@ describe("runEmaCrossBacktest", () => {
     expect(rich.feesPaid).toBeCloseTo(0.2, 10);
     expect(rich.realizedPnl).not.toBeCloseTo(flat.realizedPnl, 10);
     expect(rich.finalEquity).not.toBe(flat.finalEquity);
+  });
+
+  // B4-1 companion: the new cap (1e5) is validated empirically, not just
+  // arithmetically — a real run at the maximum boundary must produce a curve
+  // the report chart accepts (lightweight-charts throws outside
+  // ±90,071,992,547,409.91) and readouts without Infinity/NaN. This passes
+  // before and after the cap change by design; the red-first pin is the
+  // boundary rejection in trade-config.test.ts.
+  it("stays renderable at the maximum boundary values", () => {
+    const CHART_BOUND = 90071992547409.91;
+    // Slippage stays 0: a 1e5-per-unit slippage against ~$140 prices would
+    // drive the sell fill negative, which the engine visibly rejects — a
+    // separate, already-handled path. The renderability question is the
+    // fee × size product.
+    const result = runEmaCrossBacktest(crossyCandles(), {
+      startingCapital: STARTING_CAPITAL,
+      feePerUnit: 100000,
+      slippagePerUnit: 0,
+      size: 100000
+    });
+    expect(result.fills.length).toBeGreaterThan(0);
+    for (const value of result.equityCurve) {
+      expect(Number.isFinite(value)).toBe(true);
+      expect(Math.abs(value)).toBeLessThan(CHART_BOUND);
+    }
+    const stats = analyzeFills(result.fills);
+    const rendered = [
+      formatMoney(result.finalEquity),
+      formatSignedMoney(result.realizedPnl),
+      formatMoney(result.feesPaid),
+      formatMoney(result.maxDrawdown),
+      formatWinRate(stats.winRate),
+      formatProfitFactor(stats.profitFactor),
+      ...stats.rows.map(r => formatSignedMoney(r.realizedPnl))
+    ].join(" ");
+    expect(rendered).not.toContain("Infinity");
+    expect(rendered).not.toContain("NaN");
   });
 });
 
