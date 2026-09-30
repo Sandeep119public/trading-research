@@ -354,8 +354,10 @@ function App() {
     // banner must not claim the fresh session is broken.
     setRuntimeError(null);
     // The jump landing (marker + current row) belongs to the session that
-    // made it; a restart clears both charts and the highlight.
+    // made it; a restart clears both charts and the highlight — and any
+    // center a seek staged but whose data never landed (A4-1).
     setLastJump(null);
+    pendingCenter.current = null;
     candleMarkers.current?.([]);
     resultsJumpMarker.current?.(null);
     stack.execution.reset();
