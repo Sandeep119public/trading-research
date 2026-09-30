@@ -75,25 +75,40 @@ describe("parseTradeConfig", () => {
     // reaches fills and equity as silent garbage. The bound must catch it.
     expect(parseTradeConfig(draft({ fee: "1e308" }))).toEqual({
       config: null,
-      errors: ["Fee must be <= 1000000000"]
+      errors: ["Fee must be <= 100000"]
     });
     expect(parseTradeConfig(draft({ slippage: "1e308" }))).toEqual({
       config: null,
-      errors: ["Slippage must be <= 1000000000"]
+      errors: ["Slippage must be <= 100000"]
     });
     expect(parseTradeConfig(draft({ size: "1e308" }))).toEqual({
       config: null,
-      errors: ["Size must be <= 1000000000"]
+      errors: ["Size must be <= 100000"]
     });
   });
 
   it("accepts the bound itself and rejects just above it", () => {
-    expect(parseTradeConfig(draft({ fee: "1000000000" })).config).not.toBeNull();
-    expect(parseTradeConfig(draft({ fee: "1e9" })).config).not.toBeNull();
-    expect(parseTradeConfig(draft({ size: "999999999.5" })).config).not.toBeNull();
-    expect(parseTradeConfig(draft({ fee: "1000000001" }))).toEqual({
+    expect(parseTradeConfig(draft({ fee: "100000" })).config).not.toBeNull();
+    expect(parseTradeConfig(draft({ fee: "1e5" })).config).not.toBeNull();
+    expect(parseTradeConfig(draft({ size: "99999.5" })).config).not.toBeNull();
+    expect(parseTradeConfig(draft({ fee: "100001" }))).toEqual({
       config: null,
-      errors: ["Fee must be <= 1000000000"]
+      errors: ["Fee must be <= 100000"]
+    });
+  });
+
+  // B4-1: the old 1e9 cap admitted fee/size pairs whose equity (~1e18)
+  // exceeds the report chart's ±9.007e13 value bound, crashing the whole
+  // app into the error boundary on an otherwise valid run. The cap must sit
+  // where runs stay renderable, not merely IEEE-finite.
+  it("rejects 1e9-scale values that a valid run would turn into an unrenderable curve", () => {
+    expect(parseTradeConfig(draft({ fee: "1000000000" }))).toEqual({
+      config: null,
+      errors: ["Fee must be <= 100000"]
+    });
+    expect(parseTradeConfig(draft({ size: "1000000000" }))).toEqual({
+      config: null,
+      errors: ["Size must be <= 100000"]
     });
   });
 });

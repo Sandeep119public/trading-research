@@ -28,18 +28,30 @@ export interface TradeConfigDraft {
 export const DEFAULT_TRADE_DRAFT: TradeConfigDraft = { fee: "0", slippage: "0", size: "0.01" };
 
 /**
- * Upper bound for every user-entered field. Finite is not enough: 1e308 is
- * finite and positive, yet size * feePerUnit or size * price against it
- * overflows to Infinity, which reaches fills and equity as silent garbage
- * (or as an uncaught RangeError mid-run). At 1e9 every downstream product
- * stays at least ~190 orders of magnitude below IEEE-754 overflow for any
- * price the served universe can quote, and no legitimate fee, slippage, or
- * order size for BTCUSDT/ETHUSDT/SOLUSDT comes close — values beyond it are
- * exponent typos, and this boundary rejects them instead of passing them to
- * an engine. The engines' own finite checks remain as the last line of
- * defense for non-UI callers; the UI never has to reach them.
+ * Upper bound for every user-entered field. Finite is not enough, and
+ * neither is merely dodging IEEE-754 overflow: the report chart refuses
+ * line-series values outside ±90,071,992,547,409.91 (~9.007e13) by throwing
+ * inside setData, which takes the whole app — replay session included —
+ * into the error boundary (B4-1: fee=size=1e9 is IEEE-finite yet produced a
+ * ~1e18 equity curve and crashed a valid run). So the cap is derived from
+ * the rendering bound, not the float bound.
+ *
+ * Per-fill fee is size × feePerUnit ≤ M² for cap M, and a run can hold tens
+ * of fills (strategy-driven; observed ≤54) — adversarially, one per candle
+ * over the largest servable ranges (~3k candles). At M=1e5 the per-fill
+ * ceiling is 1e10: a hundred fills total 1e12 (~90× below the chart bound),
+ * and even an every-candle fill pattern stays under ~3e13. M=1e6 fails that
+ * arithmetic (100 fills × 1e12 already exceeds the bound), so 1e5 is the
+ * largest power-of-ten cap that stays renderable with margin.
+ *
+ * It is also economically sane as an upper fence: 1e5 units is ~$8.6B at
+ * BTC prices and a 1e5 per-unit fee is on the order of the asset price
+ * itself — anything beyond is an exponent typo, and this boundary rejects
+ * it instead of passing it to an engine. The engines' own finite checks
+ * remain as the last line of defense for non-UI callers; the UI never has
+ * to reach them.
  */
-export const MAX_TRADE_CONFIG_VALUE = 1e9;
+export const MAX_TRADE_CONFIG_VALUE = 1e5;
 
 export interface ParsedTradeConfig {
   /**
