@@ -627,7 +627,7 @@ function App() {
     </main>
     <footer className="card">
       <button onClick={reset} disabled={gates.reset} className="btn-danger">↺ Reset</button>
-      <button onClick={togglePlaying} disabled={gates.play}>{playing ? "Pause" : "Play"}</button>
+      <button onClick={togglePlaying} disabled={gates.play} className="btn-primary">{playing ? "Pause" : "Play"}</button>
       <button onClick={stepReplay} disabled={gates.step}>Step</button>
       <button onClick={() => submitIntent("buy")} disabled={gates.buy}>Buy</button>
       <button onClick={() => submitIntent("sell")} disabled={gates.sell}>Sell</button>
