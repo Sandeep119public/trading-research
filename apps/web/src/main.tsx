@@ -31,9 +31,11 @@ import { ErrorBoundary } from "./error-boundary";
 import { footerGates } from "./footer-gates";
 import { jumpMarker, type ChartMarker } from "./fill-markers";
 import { executeManualIntent } from "./intents";
+import { EmptyState } from "./empty-state";
 import { nameAttribution } from "./attribution";
 import { keyToAction, type ShortcutAction } from "./key-to-action";
 import { planJump, type JumpPlan } from "./jump-plan";
+import { pnlSignClass } from "./report-format";
 import { syncFromMarketSafe } from "./replay-sync";
 import { mountResultsChart } from "./results-chart";
 import { ResultsPanel, type BacktestView } from "./results-panel";
@@ -91,12 +93,32 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function portfolioLabel(stack: Stack | null, state: MarketState | null, portfolioState: PortfolioState | null): string {
-  if (!stack || !state || !portfolioState) return "—";
+/**
+ * The footer stat blocks, as labeled values: same numbers the old
+ * pipe-separated readout showed, but each in its own slot. Null (no stack
+ * yet) renders dashes so the slots keep their shape. Pure formatting.
+ */
+function portfolioStats(stack: Stack | null, state: MarketState | null, portfolioState: PortfolioState | null): {
+  position: string;
+  realized: string;
+  unrealized: string;
+  equity: string;
+  realizedValue: number;
+  unrealizedValue: number;
+} {
+  if (!stack || !state || !portfolioState) {
+    return { position: "—", realized: "—", unrealized: "—", equity: "—", realizedValue: 0, unrealizedValue: 0 };
+  }
   const position = portfolioState.position;
   const unrealized = position === null ? 0 : stack.portfolio.unrealizedAt(state.candle.close);
-  const held = position === null ? "flat" : `${position.side} ${position.quantity} @ ${position.entryPrice.toFixed(2)}`;
-  return `Pos ${held} | R ${portfolioState.realizedPnl.toFixed(2)} | U ${unrealized.toFixed(2)} | Eq ${portfolioState.equity.toFixed(2)}`;
+  return {
+    position: position === null ? "flat" : `${position.side} ${position.quantity} @ ${position.entryPrice.toFixed(2)}`,
+    realized: portfolioState.realizedPnl.toFixed(2),
+    unrealized: unrealized.toFixed(2),
+    equity: portfolioState.equity.toFixed(2),
+    realizedValue: portfolioState.realizedPnl,
+    unrealizedValue: unrealized
+  };
 }
 
 function App() {
@@ -438,6 +460,7 @@ function App() {
   const caption = stack !== null && state !== null
     ? replayCaption({ index: state.index, playing, finished: stack.engine.finished() })
     : null;
+  const footerStats = portfolioStats(stack, state, portfolioState);
 
   // F31: playback shortcuts. keyToAction decides which key means what — and
   // which the focused widget keeps for itself — while this effect only
@@ -511,7 +534,7 @@ function App() {
   };
 
   return <div className="app">
-    <header>
+    <header className="card">
       <div><strong>Trading Research</strong><span className="badge">REPLAY</span></div>
       <div className="selectors">
         <select aria-label="Symbol" value={symbol} onChange={e => changeSymbol(e.target.value as SupportedSymbol)}>
@@ -533,20 +556,36 @@ function App() {
       )}
     </div>
     <main>
-      <section className="chart-shell">
+      <section className="chart-shell card">
         <div ref={chartRef} className="chart" />
-        {caption !== null && <div className="chart-caption">{caption}</div>}
+        {caption !== null && state !== null && (
+          <div className="chart-empty">
+            <EmptyState
+              icon="▶"
+              title={caption}
+              body={
+                state.index === 0
+                  ? "Press Play or Step to advance the replay one candle at a time."
+                  : "The replay has run out of candles. Reset to start over, or scroll back to review."
+              }
+            />
+          </div>
+        )}
         {!loaded && (
           <div className="chart-placeholder">
             {dataState.status === "error" ? (
-              <>
-                <span>Data failed to load: {friendlyDataError(dataState.error)}</span>
-                <button type="button" className="btn-secondary" onClick={() => setReloadNonce(n => n + 1)}>
-                  Retry
-                </button>
-              </>
+              <EmptyState
+                icon="!"
+                title="Data failed to load"
+                body={friendlyDataError(dataState.error)}
+                actions={
+                  <button type="button" className="btn-secondary" onClick={() => setReloadNonce(n => n + 1)}>
+                    Retry
+                  </button>
+                }
+              />
             ) : (
-              `Loading ${symbol} ${timeframe}…`
+              <EmptyState icon="…" title={`Loading ${symbol} ${timeframe}…`} />
             )}
           </div>
         )}
@@ -566,7 +605,7 @@ function App() {
         hasPosition={position !== null}
         activeTime={lastJump?.time ?? null}
       />
-      <aside className="data-panel">
+      <aside className="data-panel card">
         <h2>Data Manager</h2>
         <dl>
           <dt>Symbol</dt><dd>{dataState.symbol}</dd>
@@ -586,7 +625,7 @@ function App() {
         </dl>
       </aside>
     </main>
-    <footer>
+    <footer className="card">
       <button onClick={reset} disabled={gates.reset} className="btn-danger">↺ Reset</button>
       <button onClick={togglePlaying} disabled={gates.play}>{playing ? "Pause" : "Play"}</button>
       <button onClick={stepReplay} disabled={gates.step}>Step</button>
@@ -595,13 +634,11 @@ function App() {
       <button onClick={closePosition} disabled={gates.close}>Close</button>
       <div className="speeds">{([1, 2, 5, 10] as const).map(s => <button className={speed === s ? "active" : ""} key={s} onClick={() => setSpeed(s)}>{s}x</button>)}</div>
       <div className="time">{state ? `${dateLabel(state.candle.timestamp * 1000)} UTC` : "—"}</div>
-      <div className="time readout">
-        {portfolioLabel(stack, state, portfolioState).split(" | ").map((part, i) => (
-          <React.Fragment key={i}>
-            {i > 0 && " | "}
-            <span className="nb">{part}</span>
-          </React.Fragment>
-        ))}
+      <div className="time readout footer-stats">
+        <div className="stat"><span>Position</span><b className="nb">{footerStats.position}</b></div>
+        <div className="stat"><span>Realized</span><b className={pnlSignClass(footerStats.realizedValue)}>{footerStats.realized}</b></div>
+        <div className="stat"><span>Unrealized</span><b className={pnlSignClass(footerStats.unrealizedValue)}>{footerStats.unrealized}</b></div>
+        <div className="stat"><span>Equity</span><b className="nb">{footerStats.equity}</b></div>
       </div>
     </footer>
   </div>;

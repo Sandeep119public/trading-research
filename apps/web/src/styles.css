@@ -10,10 +10,12 @@
   --accent:#60a5fa;--accent-hover:#7dd3fc;--on-accent:#09090b;
   --success:#4ade80;--danger:#f87171;--warn:#facc15;--warn-strong:#fbbf24;
   --danger-bg:#2a1215;--danger-border:#7f1d1d;--danger-text:#fca5a5;
-  --radius:6px;--radius-sm:5px;--gap:8px;
+  --radius:6px;--radius-sm:5px;--radius-lg:14px;--gap:8px;
+  --surface-raised:#121218;
+  --shadow:0 10px 28px rgba(0,0,0,.5);
   --focus-color:#60a5fa;--focus-width:2px;--focus-offset:2px;
 }
-*{box-sizing:border-box}html,body,#root{margin:0;width:100%;height:100%;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text)}.app{height:100%;display:grid;grid-template-rows:56px auto 1fr 64px}.app header{display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid var(--border);background:var(--surface)}.app header strong{font-size:15px;letter-spacing:.01em}.badge{margin-left:10px;padding:4px 7px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-size:10px;color:var(--label)}.symbol{font-size:12px;color:var(--label);font-variant-numeric:tabular-nums}.chart-shell{height:100%;min-height:0}.chart{width:100%;height:100%}footer{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap);padding:10px 14px;border-top:1px solid var(--border);background:var(--surface)}button{border:1px solid var(--border-strong);background:var(--btn-bg);color:var(--text-2);border-radius:var(--radius);padding:8px 11px;font:inherit;font-size:12px;cursor:pointer}button:hover{background:var(--btn-bg-hover)}.speeds{display:flex;gap:4px;margin-left:4px}.speeds button{padding:7px 9px}.speeds .active{background:var(--text-2);color:var(--bg);border-color:var(--text-2)}.time{margin-left:auto;color:var(--label);font-variant-numeric:tabular-nums;font-size:12px;white-space:nowrap}@media(max-width:600px){.app{grid-template-rows:50px auto 1fr auto}.app header{padding:0 12px}.symbol{display:none}footer{flex-wrap:wrap;padding:8px}.time{width:100%;order:3;margin-left:0;text-align:center;font-size:11px}.chart{min-height:0}}
+*{box-sizing:border-box}html,body,#root{margin:0;width:100%;height:100%;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text)}.app{height:100%;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;gap:12px;padding:12px}.app header{display:flex;align-items:center;justify-content:space-between;padding:10px 18px}.app header strong{font-size:15px;letter-spacing:.01em}.badge{margin-left:10px;padding:4px 7px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-size:10px;color:var(--label)}.symbol{font-size:12px;color:var(--label);font-variant-numeric:tabular-nums}.chart-shell{height:100%;min-height:0}.chart{width:100%;height:100%}footer{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 14px}button{border:1px solid var(--border-strong);background:var(--btn-bg);color:var(--text-2);border-radius:var(--radius);padding:8px 11px;font:inherit;font-size:12px;cursor:pointer}button:hover{background:var(--btn-bg-hover)}.speeds{display:flex;gap:4px;margin-left:4px}.speeds button{padding:7px 9px}.speeds .active{background:var(--text-2);color:var(--bg);border-color:var(--text-2)}.time{margin-left:auto;color:var(--label);font-variant-numeric:tabular-nums;font-size:12px;white-space:nowrap}@media(max-width:600px){.app{grid-template-rows:50px auto 1fr auto}.app header{padding:0 12px}.symbol{display:none}footer{flex-wrap:wrap;padding:8px}.time{width:100%;order:3;margin-left:0;text-align:center;font-size:11px}.chart{min-height:0}}
 
 /* Button variants (F4): base button = secondary look; primary drives the one
    main action, danger marks the session wipe, ghost sits on colored banners. */
@@ -35,11 +37,18 @@ button:disabled:hover{background:var(--disabled-bg)}
    2px accent + offset, never UA blue and never a selection highlight. */
 button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:var(--focus-width) solid var(--focus-color);outline-offset:var(--focus-offset)}
 
+/* Design pass 2, Phase 1 — layout system. One elevated-surface treatment for
+   every distinct section (header, chart, Data Manager, results, footer):
+   same background/border/radius/shadow everywhere, so grouping reads as
+   structure instead of floating labels. Colors reuse Phase 1 tokens; only
+   radius/shadow/surface-raised are new. */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow)}
+
 /* App shell: chart + backtest results band in column 1, Data Manager alongside. */
-.app main{display:grid;grid-template-columns:minmax(0,1fr) 252px;grid-template-rows:minmax(0,1fr) auto;min-height:0}
-.chart-shell{position:relative;min-width:0;grid-column:1;grid-row:1}
+.app main{display:grid;grid-template-columns:minmax(0,1fr) 252px;grid-template-rows:minmax(0,1fr) auto;gap:12px;min-height:0}
+.chart-shell{position:relative;min-width:0;grid-column:1;grid-row:1;overflow:hidden;min-height:0}
 .chart-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;color:var(--label);font-size:13px;line-height:1.6;overflow-wrap:anywhere}
-.data-panel{grid-column:2;grid-row:1 / span 2;border-left:1px solid var(--border);background:var(--surface);padding:14px 16px;overflow:auto}
+.data-panel{grid-column:2;grid-row:1 / span 2;padding:14px 16px;overflow:auto}
 .data-panel h2{margin:0 0 12px;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .data-panel dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px 12px;margin:0;font-size:12px}
 .data-panel dt{color:var(--muted)}
@@ -60,22 +69,30 @@ button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible,[t
 .status.status-error{color:var(--danger)}
 .nb{white-space:nowrap}
 .time.readout{white-space:normal}
+/* Footer stat blocks: each value gets a labeled slot (tabular numerals,
+   P&L color semantics reused) instead of pipe-separated text. */
+.footer-stats{display:flex;align-items:stretch;margin-left:auto}
+.stat{display:flex;flex-direction:column;justify-content:center;padding:2px 14px;min-width:96px}
+.stat+.stat{border-left:1px solid var(--border)}
+.stat span{font-size:10px;letter-spacing:.09em;color:var(--muted);text-transform:uppercase}
+.stat b{font-size:13px;font-weight:650;color:var(--text-2);font-variant-numeric:tabular-nums}
 .data-panel .detail{color:var(--label);font-size:11px}
 .selectors{display:flex;gap:var(--gap)}
-select{border:1px solid var(--border-strong);background:var(--btn-bg);color:var(--text-2);border-radius:var(--radius);padding:7px 9px;font:inherit;font-size:12px;cursor:pointer}
+/* Symbol/timeframe in the control family, not the OS widget: same height,
+   border, and radius language as buttons/inputs, with a drawn chevron. */
+select{appearance:none;-webkit-appearance:none;border:1px solid var(--border-strong);background:var(--btn-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' stroke='%23a1a1aa' stroke-width='1.4' fill='none'/%3E%3C/svg%3E") no-repeat right 10px center;color:var(--text-2);border-radius:var(--radius);height:34px;padding:0 30px 0 12px;font:inherit;font-size:12px;cursor:pointer}
+select:hover{background-color:var(--btn-bg-hover)}
 
 /* Backtest results report: own section under the chart. The report's equity
    chart gets its own canvas (see results-chart.ts); nothing here ever writes
    to the replay chart above it. */
-.results-panel{grid-column:1;grid-row:2;border-top:1px solid var(--border);background:var(--surface);padding:10px 14px;max-height:45vh;overflow:auto}
+.results-panel{grid-column:1;grid-row:2;padding:10px 14px;max-height:45vh;overflow:auto}
 .results-header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .results-panel h2{margin:0;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
 .results-meta{flex:1;min-width:0;font-size:11px;color:var(--label);white-space:normal;overflow:visible;text-overflow:clip;font-variant-numeric:tabular-nums}
 .results-actions{margin-left:auto;display:flex;align-items:center;gap:10px;white-space:nowrap}
 .results-run{white-space:nowrap}
 .results-controls{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px}
-.results-hint{margin:2px 0 6px;color:var(--muted);font-size:12px}
-.results-empty{margin:10px 0 4px;color:var(--label);font-size:12px}
 .results-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px 16px;margin:0 0 10px}
 .results-stats dt{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 @media(max-width:1200px){.results-stats{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}}
@@ -126,9 +143,17 @@ select{border:1px solid var(--border-strong);background:var(--btn-bg);color:var(
 .fills-table tbody tr.fill-current td:first-child{box-shadow:inset 3px 0 0 var(--warn-strong)}
 
 /* F26/F30: a paused chart that has not started (or has finished) says so in
-   place, top-center — clear of the attribution logo at bottom-left. It never
-   covers the footer controls, so Replay and Play stay reachable. */
-.chart-caption{position:absolute;top:14px;left:50%;transform:translateX(-50%);padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-2);font-size:12px;pointer-events:none;white-space:nowrap;z-index:2}
+   a real empty state — centered card, glyph, heading, one line of guidance —
+   instead of a floating pill. Never covers the footer controls, so Replay
+   and Play stay reachable; pointer-events stay off so the chart keeps them. */
+.chart-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;pointer-events:none;z-index:2}
+.empty-state{max-width:420px;background:var(--surface-raised);border:1px solid var(--border-strong);border-radius:var(--radius-lg);box-shadow:var(--shadow);padding:24px 30px;text-align:center}
+.empty-state-icon{width:44px;height:44px;margin:0 auto 12px;border:1px solid var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:15px}
+.empty-state-title{margin:0 0 6px;font-size:14px;font-weight:700;color:var(--text)}
+.empty-state-body{margin:0;font-size:12px;color:var(--label);line-height:1.6}
+.empty-state-actions{margin-top:14px;display:flex;gap:10px;justify-content:center}
+.empty-state--compact{padding:16px 20px;text-align:left}
+.empty-state--compact .empty-state-icon{display:none}
 
 /* F28: the attribution logo is required, but its injected size dominates the
    small report chart — shrink and soften it in place (id selector + the
@@ -146,7 +171,7 @@ select{border:1px solid var(--border-strong);background:var(--btn-bg);color:var(
   .app main{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto auto}
   .chart-shell{grid-row:1}
   .results-panel{grid-column:1;grid-row:2;max-height:40vh}
-  .data-panel{grid-column:1;grid-row:3;border-left:none;border-top:1px solid var(--border);max-height:38vh}
+  .data-panel{grid-column:1;grid-row:3;max-height:38vh}
   .results-chart{height:130px}
 }
 

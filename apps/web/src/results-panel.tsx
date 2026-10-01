@@ -5,6 +5,7 @@ import { analyzeFills, sortFills, type FillRow, type FillSortKey, type SortDirec
 import { formatFillTime, formatMoney, formatProfitFactor, formatSignedMoney, formatWinRate, pnlSignClass } from "./report-format";
 import { exportReport } from "./report-export";
 import { ConfigInputs } from "./config-inputs";
+import { EmptyState } from "./empty-state";
 import { jumpLegend, planJump } from "./jump-plan";
 import { configValidationMessages, type TradeConfigDraft, type TradeConfigField } from "./trade-config";
 
@@ -165,7 +166,7 @@ export function ResultsPanel({
   const messages = configValidationMessages(configErrors, hasPosition);
 
   return (
-    <section className="results-panel" aria-label="Backtest results">
+    <section className="results-panel card" aria-label="Backtest results">
       <div className="results-header">
         <h2>Backtest results</h2>
         {view !== null && (
@@ -192,7 +193,12 @@ export function ResultsPanel({
         runError !== null ? (
           <p className="results-error" role="alert">Backtest failed: {runError}</p>
         ) : (
-          <p className="results-hint">No backtest run yet — press Run backtest for a full-range EMA(20)/EMA(50) report.</p>
+          <EmptyState
+            compact
+            icon="…"
+            title="No backtest run yet"
+            body="Press Run backtest for a full-range EMA(20)/EMA(50) report."
+          />
         )
       ) : (
         <>
@@ -232,7 +238,7 @@ export function ResultsPanel({
           </dl>
           <div className="results-chart" ref={chartRef} />
           {view.result.fills.length === 0 ? (
-            <p className="results-empty">No trades in this run.</p>
+            <EmptyState compact icon="∅" title="No trades in this run." />
           ) : (
             <>
               {onJumpToTime !== undefined && (
